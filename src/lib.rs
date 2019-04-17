@@ -1,11 +1,11 @@
 use scroll::IOwrite;
 use std::iter;
 
-pub use object::{Binding, Machine, SectionKind, SymbolKind, RelocationKind};
+pub use object::{Binding, Machine, RelocationKind, SectionKind, SymbolKind};
 
 mod elf {
-    pub use goblin::elf::header::Header;
     pub use goblin::elf::header::header64::Header as Header64;
+    pub use goblin::elf::header::Header;
     pub use goblin::elf::header::ELFMAG;
     pub use goblin::elf::header::{EI_CLASS, ELFCLASS64};
     pub use goblin::elf::header::{EI_DATA, ELFDATA2LSB};
@@ -22,24 +22,30 @@ mod elf {
     pub use goblin::elf::header::{EM_386, EM_X86_64};
 
     pub use goblin::elf::header::header64::SIZEOF_EHDR as SIZEOF_EHDR64;
-    pub use goblin::elf::program_header::ProgramHeader;
     pub use goblin::elf::program_header::program_header64::ProgramHeader as ProgramHeader64;
     pub use goblin::elf::program_header::program_header64::SIZEOF_PHDR as SIZEOF_PHDR64;
-    pub use goblin::elf::section_header::SectionHeader;
-    pub use goblin::elf::section_header::SHN_ABS;
-    pub use goblin::elf::section_header::{SHT_SYMTAB, SHT_STRTAB, SHT_RELA, SHT_PROGBITS, SHT_NOBITS};
-    pub use goblin::elf::section_header::{SHF_ALLOC, SHF_STRINGS, SHF_MERGE, SHF_EXECINSTR, SHF_WRITE, SHF_INFO_LINK, SHF_TLS};
+    pub use goblin::elf::program_header::ProgramHeader;
     pub use goblin::elf::section_header::section_header64::SectionHeader as SectionHeader64;
     pub use goblin::elf::section_header::section_header64::SIZEOF_SHDR as SIZEOF_SHDR64;
+    pub use goblin::elf::section_header::SectionHeader;
+    pub use goblin::elf::section_header::SHN_ABS;
+    pub use goblin::elf::section_header::{
+        SHF_ALLOC, SHF_EXECINSTR, SHF_INFO_LINK, SHF_MERGE, SHF_STRINGS, SHF_TLS, SHF_WRITE,
+    };
+    pub use goblin::elf::section_header::{
+        SHT_NOBITS, SHT_PROGBITS, SHT_RELA, SHT_STRTAB, SHT_SYMTAB,
+    };
 
-    pub use goblin::elf::sym::Sym;
     pub use goblin::elf::sym::sym64::SIZEOF_SYM as SIZEOF_SYM64;
-    pub use goblin::elf::sym::{STB_LOCAL, STB_GLOBAL, STB_WEAK};
-    pub use goblin::elf::sym::{STT_NOTYPE, STT_OBJECT, STT_FUNC, STT_SECTION, STT_FILE, STT_COMMON, STT_TLS};
+    pub use goblin::elf::sym::Sym;
+    pub use goblin::elf::sym::{STB_GLOBAL, STB_LOCAL, STB_WEAK};
+    pub use goblin::elf::sym::{
+        STT_COMMON, STT_FILE, STT_FUNC, STT_NOTYPE, STT_OBJECT, STT_SECTION, STT_TLS,
+    };
 
     pub use goblin::elf::reloc;
-    pub use goblin::elf::reloc::Reloc;
     pub use goblin::elf::reloc::reloc64::SIZEOF_RELA as SIZEOF_RELA64;
+    pub use goblin::elf::reloc::Reloc;
 }
 
 #[derive(Debug)]
@@ -288,14 +294,19 @@ impl Object {
         // Write symbols.
         write_align(&mut buffer, 8);
         debug_assert_eq!(symtab_offset, buffer.len());
-        buffer.iowrite_with(elf::Sym {
-            st_name: 0,
-            st_info: 0,
-            st_other: 0,
-            st_shndx: 0,
-            st_value: 0,
-            st_size: 0,
-        }, ctx).unwrap();
+        buffer
+            .iowrite_with(
+                elf::Sym {
+                    st_name: 0,
+                    st_info: 0,
+                    st_other: 0,
+                    st_shndx: 0,
+                    st_value: 0,
+                    st_size: 0,
+                },
+                ctx,
+            )
+            .unwrap();
         let mut write_symbol = |index: usize, symbol: &Symbol| {
             let st_bind = match symbol.binding {
                 Binding::Unknown | Binding::Local => elf::STB_LOCAL,
@@ -316,16 +327,24 @@ impl Object {
             let st_shndx = if symbol.kind == SymbolKind::File {
                 elf::SHN_ABS as usize
             } else {
-                symbol.section.map(|s| section_offsets[s.0].index).unwrap_or(0)
+                symbol
+                    .section
+                    .map(|s| section_offsets[s.0].index)
+                    .unwrap_or(0)
             };
-            buffer.iowrite_with(elf::Sym {
-                st_name: symbol_offsets[index].str_offset,
-                st_info: (st_bind << 4) + st_type,
-                st_other,
-                st_shndx,
-                st_value: symbol.value,
-                st_size: symbol.size,
-            }, ctx).unwrap();
+            buffer
+                .iowrite_with(
+                    elf::Sym {
+                        st_name: symbol_offsets[index].str_offset,
+                        st_info: (st_bind << 4) + st_type,
+                        st_other,
+                        st_shndx,
+                        st_value: symbol.value,
+                        st_size: symbol.size,
+                    },
+                    ctx,
+                )
+                .unwrap();
         };
         for (index, symbol) in self.symbols.iter().enumerate() {
             if symbol.binding == Binding::Unknown || symbol.binding == Binding::Local {
@@ -356,12 +375,17 @@ impl Object {
                         RelocationKind::Other(x) => x,
                     };
                     let r_sym = symbol_offsets[reloc.symbol.0].index;
-                    buffer.iowrite_with(elf::Reloc {
-                        r_offset: reloc.offset,
-                        r_addend: Some(reloc.addend),
-                        r_sym,
-                        r_type,
-                    }, (true, ctx)).unwrap();
+                    buffer
+                        .iowrite_with(
+                            elf::Reloc {
+                                r_offset: reloc.offset,
+                                r_addend: Some(reloc.addend),
+                                r_sym,
+                                r_type,
+                            },
+                            (true, ctx),
+                        )
+                        .unwrap();
                 }
             }
         }
@@ -373,22 +397,26 @@ impl Object {
         // Write section headers.
         write_align(&mut buffer, 8);
         debug_assert_eq!(e_shoff, buffer.len());
-        buffer.iowrite_with(elf::SectionHeader {
-            sh_name: 0,
-            sh_type: 0,
-            sh_flags: 0,
-            sh_addr: 0,
-            sh_offset: 0,
-            sh_size: 0,
-            sh_link: 0,
-            sh_info: 0,
-            sh_addralign: 0,
-            sh_entsize: 0,
-        }, ctx).unwrap();
+        buffer
+            .iowrite_with(
+                elf::SectionHeader {
+                    sh_name: 0,
+                    sh_type: 0,
+                    sh_flags: 0,
+                    sh_addr: 0,
+                    sh_offset: 0,
+                    sh_size: 0,
+                    sh_link: 0,
+                    sh_info: 0,
+                    sh_addralign: 0,
+                    sh_entsize: 0,
+                },
+                ctx,
+            )
+            .unwrap();
         for (index, section) in self.sections.iter().enumerate() {
             let sh_type = match section.kind {
-                SectionKind::UninitializedData
-                | SectionKind::UninitializedTls => elf::SHT_NOBITS,
+                SectionKind::UninitializedData | SectionKind::UninitializedTls => elf::SHT_NOBITS,
                 _ => elf::SHT_PROGBITS,
             };
             let sh_flags = match section.kind {
@@ -403,81 +431,105 @@ impl Object {
                 SectionKind::Other | SectionKind::Unknown | SectionKind::Metadata => 0,
             };
             let sh_entsize = match section.kind {
-                SectionKind::ReadOnlyString
-                | SectionKind::OtherString => 1,
+                SectionKind::ReadOnlyString | SectionKind::OtherString => 1,
                 _ => 0,
             };
-            buffer.iowrite_with(elf::SectionHeader {
-                sh_name: section_offsets[index].str_offset,
-                sh_type,
-                sh_flags: sh_flags.into(),
-                sh_addr: section.address,
-                sh_offset: section_offsets[index].offset as u64,
-                sh_size: section.size,
-                sh_link: 0,
-                sh_info: 0,
-                sh_addralign: section.align,
-                sh_entsize,
-            }, ctx).unwrap();
+            buffer
+                .iowrite_with(
+                    elf::SectionHeader {
+                        sh_name: section_offsets[index].str_offset,
+                        sh_type,
+                        sh_flags: sh_flags.into(),
+                        sh_addr: section.address,
+                        sh_offset: section_offsets[index].offset as u64,
+                        sh_size: section.size,
+                        sh_link: 0,
+                        sh_info: 0,
+                        sh_addralign: section.align,
+                        sh_entsize,
+                    },
+                    ctx,
+                )
+                .unwrap();
 
             if !section.relocations.is_empty() {
-                buffer.iowrite_with(elf::SectionHeader {
-                    sh_name: section_offsets[index].reloc_str_offset,
-                    sh_type: elf::SHT_RELA,
-                    sh_flags: elf::SHF_INFO_LINK.into(),
-                    sh_addr: 0,
-                    sh_offset: section_offsets[index].reloc_offset as u64,
-                    sh_size: section_offsets[index].reloc_len as u64,
-                    sh_link: symtab_index as u32,
-                    sh_info: section_offsets[index].index as u32,
-                    sh_addralign: 8,
-                    sh_entsize: elf::SIZEOF_RELA64 as u64,
-                }, ctx).unwrap();
+                buffer
+                    .iowrite_with(
+                        elf::SectionHeader {
+                            sh_name: section_offsets[index].reloc_str_offset,
+                            sh_type: elf::SHT_RELA,
+                            sh_flags: elf::SHF_INFO_LINK.into(),
+                            sh_addr: 0,
+                            sh_offset: section_offsets[index].reloc_offset as u64,
+                            sh_size: section_offsets[index].reloc_len as u64,
+                            sh_link: symtab_index as u32,
+                            sh_info: section_offsets[index].index as u32,
+                            sh_addralign: 8,
+                            sh_entsize: elf::SIZEOF_RELA64 as u64,
+                        },
+                        ctx,
+                    )
+                    .unwrap();
             }
         }
 
         // Write symtab section header.
-        buffer.iowrite_with(elf::SectionHeader {
-            sh_name: symtab_str_offset,
-            sh_type: elf::SHT_SYMTAB,
-            sh_flags: 0,
-            sh_addr: 0,
-            sh_offset: symtab_offset as u64,
-            sh_size: symtab_len as u64,
-            sh_link: strtab_index as u32,
-            sh_info: symtab_count_local as u32,
-            sh_addralign: 8,
-            sh_entsize: elf::SIZEOF_SYM64 as u64,
-        }, ctx).unwrap();
+        buffer
+            .iowrite_with(
+                elf::SectionHeader {
+                    sh_name: symtab_str_offset,
+                    sh_type: elf::SHT_SYMTAB,
+                    sh_flags: 0,
+                    sh_addr: 0,
+                    sh_offset: symtab_offset as u64,
+                    sh_size: symtab_len as u64,
+                    sh_link: strtab_index as u32,
+                    sh_info: symtab_count_local as u32,
+                    sh_addralign: 8,
+                    sh_entsize: elf::SIZEOF_SYM64 as u64,
+                },
+                ctx,
+            )
+            .unwrap();
 
         // Write strtab section header.
-        buffer.iowrite_with(elf::SectionHeader {
-            sh_name: strtab_str_offset,
-            sh_type: elf::SHT_STRTAB,
-            sh_flags: 0,
-            sh_addr: 0,
-            sh_offset: strtab_offset as u64,
-            sh_size: strtab.len() as u64,
-            sh_link: 0,
-            sh_info: 0,
-            sh_addralign: 1,
-            sh_entsize: 0,
-        }, ctx).unwrap();
+        buffer
+            .iowrite_with(
+                elf::SectionHeader {
+                    sh_name: strtab_str_offset,
+                    sh_type: elf::SHT_STRTAB,
+                    sh_flags: 0,
+                    sh_addr: 0,
+                    sh_offset: strtab_offset as u64,
+                    sh_size: strtab.len() as u64,
+                    sh_link: 0,
+                    sh_info: 0,
+                    sh_addralign: 1,
+                    sh_entsize: 0,
+                },
+                ctx,
+            )
+            .unwrap();
 
         // Write shstrtab section header.
-        buffer.iowrite_with(elf::SectionHeader {
-            sh_name: shstrtab_str_offset,
-            sh_type: elf::SHT_STRTAB,
-            // FIXME
-            sh_flags: 0,
-            sh_addr: 0,
-            sh_offset: shstrtab_offset as u64,
-            sh_size: shstrtab.len() as u64,
-            sh_link: 0,
-            sh_info: 0,
-            sh_addralign: 1,
-            sh_entsize: 0,
-        }, ctx).unwrap();
+        buffer
+            .iowrite_with(
+                elf::SectionHeader {
+                    sh_name: shstrtab_str_offset,
+                    sh_type: elf::SHT_STRTAB,
+                    // FIXME
+                    sh_flags: 0,
+                    sh_addr: 0,
+                    sh_offset: shstrtab_offset as u64,
+                    sh_size: shstrtab.len() as u64,
+                    sh_link: 0,
+                    sh_info: 0,
+                    sh_addralign: 1,
+                    sh_entsize: 0,
+                },
+                ctx,
+            )
+            .unwrap();
 
         buffer
     }

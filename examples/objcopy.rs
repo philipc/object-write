@@ -1,5 +1,5 @@
-use std::{env, fs, process};
 use std::collections::HashMap;
+use std::{env, fs, process};
 
 use object::{Object, ObjectSection, SectionKind, SymbolKind};
 use object_write as write;
@@ -70,7 +70,9 @@ fn main() {
             size: in_symbol.size(),
             binding: in_symbol.binding(),
             kind: in_symbol.kind(),
-            section: in_symbol.section_index().map(|s| *out_sections.get(&s).unwrap()),
+            section: in_symbol
+                .section_index()
+                .map(|s| *out_sections.get(&s).unwrap()),
         };
         let symbol_id = out_object.add_symbol(out_symbol);
         out_symbols.insert(symbol_index.0, symbol_id);
@@ -80,7 +82,8 @@ fn main() {
         if in_section.kind() == SectionKind::Metadata {
             continue;
         }
-        let out_section = &mut out_object.sections[out_sections.get(&in_section.index()).unwrap().0];
+        let out_section =
+            &mut out_object.sections[out_sections.get(&in_section.index()).unwrap().0];
         for (offset, in_relocation) in in_section.relocations() {
             let out_relocation = write::Relocation {
                 offset,
