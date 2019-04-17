@@ -28,7 +28,7 @@ mod elf {
     pub use goblin::elf::section_header::SectionHeader;
     pub use goblin::elf::section_header::SHN_ABS;
     pub use goblin::elf::section_header::{SHT_SYMTAB, SHT_STRTAB, SHT_RELA, SHT_PROGBITS, SHT_NOBITS};
-    pub use goblin::elf::section_header::{SHF_ALLOC, SHF_STRINGS, SHF_MERGE, SHF_EXECINSTR, SHF_WRITE, SHF_INFO_LINK};
+    pub use goblin::elf::section_header::{SHF_ALLOC, SHF_STRINGS, SHF_MERGE, SHF_EXECINSTR, SHF_WRITE, SHF_INFO_LINK, SHF_TLS};
     pub use goblin::elf::section_header::section_header64::SectionHeader as SectionHeader64;
     pub use goblin::elf::section_header::section_header64::SIZEOF_SHDR as SIZEOF_SHDR64;
 
@@ -393,8 +393,10 @@ impl Object {
             };
             let sh_flags = match section.kind {
                 SectionKind::Text => elf::SHF_ALLOC | elf::SHF_EXECINSTR,
-                SectionKind::Data | SectionKind::Tls => elf::SHF_ALLOC | elf::SHF_WRITE,
-                SectionKind::UninitializedData | SectionKind::UninitializedTls  => elf::SHF_ALLOC | elf::SHF_WRITE,
+                SectionKind::Data => elf::SHF_ALLOC | elf::SHF_WRITE,
+                SectionKind::Tls => elf::SHF_ALLOC | elf::SHF_WRITE | elf::SHF_TLS,
+                SectionKind::UninitializedData => elf::SHF_ALLOC | elf::SHF_WRITE,
+                SectionKind::UninitializedTls => elf::SHF_ALLOC | elf::SHF_WRITE | elf::SHF_TLS,
                 SectionKind::ReadOnlyData => elf::SHF_ALLOC,
                 SectionKind::ReadOnlyString => elf::SHF_ALLOC | elf::SHF_STRINGS | elf::SHF_MERGE,
                 SectionKind::OtherString => elf::SHF_STRINGS | elf::SHF_MERGE,
