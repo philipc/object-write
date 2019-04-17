@@ -1,6 +1,7 @@
-use object::{Binding, Machine, SectionKind, SymbolKind, RelocationKind};
 use scroll::IOwrite;
 use std::iter;
+
+pub use object::{Binding, Machine, SectionKind, SymbolKind, RelocationKind};
 
 mod elf {
     pub use goblin::elf::header::Header;
