@@ -89,6 +89,7 @@ fn main() {
                 offset,
                 symbol: *out_symbols.get(&in_relocation.symbol().0).unwrap(),
                 kind: in_relocation.kind(),
+                size: in_relocation.size(),
                 addend: in_relocation.addend(),
             };
             out_section.relocations.push(out_relocation);

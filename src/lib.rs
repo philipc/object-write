@@ -368,11 +368,20 @@ impl Object {
                 debug_assert_eq!(section_offsets[index].reloc_offset, buffer.len());
                 for reloc in &section.relocations {
                     // TODO: other formats
-                    let r_type = match reloc.kind {
-                        RelocationKind::Direct32 => elf::reloc::R_X86_64_32,
-                        RelocationKind::DirectSigned32 => elf::reloc::R_X86_64_32S,
-                        RelocationKind::Direct64 => elf::reloc::R_X86_64_64,
-                        RelocationKind::Other(x) => x,
+                    let r_type = match (reloc.kind, reloc.size) {
+                        (RelocationKind::Absolute, 64) => elf::reloc::R_X86_64_64,
+                        (RelocationKind::Relative, 32) => elf::reloc::R_X86_64_PC32,
+                        (RelocationKind::GotOffset, 32) => elf::reloc::R_X86_64_GOT32,
+                        (RelocationKind::PltRelative, 32) => elf::reloc::R_X86_64_PLT32,
+                        (RelocationKind::GotRelative, 32) => elf::reloc::R_X86_64_GOTPCREL,
+                        (RelocationKind::Absolute, 32) => elf::reloc::R_X86_64_32,
+                        (RelocationKind::AbsoluteSigned, 32) => elf::reloc::R_X86_64_32S,
+                        (RelocationKind::Absolute, 16) => elf::reloc::R_X86_64_16,
+                        (RelocationKind::Relative, 16) => elf::reloc::R_X86_64_PC16,
+                        (RelocationKind::Absolute, 8) => elf::reloc::R_X86_64_8,
+                        (RelocationKind::Relative, 8) => elf::reloc::R_X86_64_PC8,
+                        (RelocationKind::Other(x), _) => x,
+                        _ => unimplemented!(),
                     };
                     let r_sym = symbol_offsets[reloc.symbol.0].index;
                     buffer
@@ -635,6 +644,8 @@ pub struct Relocation {
     pub symbol: SymbolId,
     // r_info/R_TYPE
     pub kind: RelocationKind,
+    // r_info/R_TYPE
+    pub size: u8,
     // r_addend
     pub addend: i64,
 }
