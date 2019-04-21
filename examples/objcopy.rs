@@ -29,7 +29,7 @@ fn main() {
             process::exit(1);
         }
     };
-    let in_object = match object::ElfFile::parse(&*in_file) {
+    let in_object = match object::File::parse(&*in_file) {
         Ok(object) => object,
         Err(err) => {
             eprintln!("Failed to parse file '{}': {}", in_file_path, err);
@@ -96,7 +96,7 @@ fn main() {
         }
     }
 
-    let out_data = out_object.write();
+    let out_data = out_object.write(in_object.format());
     if let Err(err) = fs::write(&out_file_path, out_data) {
         eprintln!("Failed to write file '{}': {}", out_file_path, err);
         process::exit(1);
