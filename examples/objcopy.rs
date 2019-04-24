@@ -45,14 +45,19 @@ fn main() {
         if in_section.kind() == SectionKind::Metadata {
             continue;
         }
+        let data = in_section.uncompressed_data();
+        let mut size = in_section.size();
+        if size < data.len() as u64 {
+            size = data.len() as u64;
+        }
         let out_section = write::Section {
             name: in_section.name().unwrap_or("").as_bytes().to_vec(),
             segment_name: in_section.segment_name().unwrap_or("").as_bytes().to_vec(),
             kind: in_section.kind(),
             address: in_section.address(),
-            size: in_section.size(),
+            size: size,
             align: in_section.align(),
-            data: in_section.uncompressed_data().into(),
+            data: data.into(),
             relocations: Vec::new(),
         };
         let section_id = out_object.add_section(out_section);
