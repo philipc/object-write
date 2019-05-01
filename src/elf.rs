@@ -1,10 +1,10 @@
+use scroll::ctx::SizeWith;
 use scroll::IOwrite;
 
 use crate::util::*;
 use crate::*;
 
 mod elf {
-    pub use goblin::elf::header::header64::Header as Header64;
     pub use goblin::elf::header::Header;
     pub use goblin::elf::header::ELFMAG;
     pub use goblin::elf::header::{EI_CLASS, ELFCLASS64};
@@ -21,12 +21,7 @@ mod elf {
     pub use goblin::elf::header::ET_REL;
     pub use goblin::elf::header::{EM_386, EM_X86_64};
 
-    pub use goblin::elf::header::header64::SIZEOF_EHDR as SIZEOF_EHDR64;
-    pub use goblin::elf::program_header::program_header64::ProgramHeader as ProgramHeader64;
-    pub use goblin::elf::program_header::program_header64::SIZEOF_PHDR as SIZEOF_PHDR64;
     pub use goblin::elf::program_header::ProgramHeader;
-    pub use goblin::elf::section_header::section_header64::SectionHeader as SectionHeader64;
-    pub use goblin::elf::section_header::section_header64::SIZEOF_SHDR as SIZEOF_SHDR64;
     pub use goblin::elf::section_header::SectionHeader;
     pub use goblin::elf::section_header::SHN_ABS;
     pub use goblin::elf::section_header::{
@@ -36,7 +31,6 @@ mod elf {
         SHT_NOBITS, SHT_PROGBITS, SHT_RELA, SHT_STRTAB, SHT_SYMTAB,
     };
 
-    pub use goblin::elf::sym::sym64::SIZEOF_SYM as SIZEOF_SYM64;
     pub use goblin::elf::sym::Sym;
     pub use goblin::elf::sym::{STB_GLOBAL, STB_LOCAL, STB_WEAK};
     pub use goblin::elf::sym::{
@@ -44,8 +38,24 @@ mod elf {
     };
 
     pub use goblin::elf::reloc;
-    pub use goblin::elf::reloc::reloc64::SIZEOF_RELA as SIZEOF_RELA64;
     pub use goblin::elf::reloc::Reloc;
+}
+
+#[derive(Default, Clone, Copy)]
+struct SectionOffsets {
+    index: usize,
+    offset: usize,
+    str_offset: usize,
+    reloc_index: usize,
+    reloc_offset: usize,
+    reloc_len: usize,
+    reloc_str_offset: usize,
+}
+
+#[derive(Default, Clone, Copy)]
+struct SymbolOffsets {
+    index: usize,
+    str_offset: usize,
 }
 
 impl Object {
@@ -56,9 +66,15 @@ impl Object {
         let mut strtab = Vec::new();
         let mut shstrtab = Vec::new();
 
-        // ELF header.
         // TODO: other formats
-        let e_ehsize = elf::SIZEOF_EHDR64;
+        let ctx = goblin::container::Ctx::new(
+            goblin::container::Container::Big,
+            goblin::container::Endian::Little,
+        );
+        let reloc_ctx = (true, ctx);
+
+        // ELF header.
+        let e_ehsize = elf::Header::size_with(&ctx);
         offset += e_ehsize;
 
         // Calculate size of section data.
@@ -127,8 +143,7 @@ impl Object {
         shstrtab.extend_from_slice(&b".symtab\0"[..]);
         offset = align(offset, 8);
         let symtab_offset = offset;
-        // TODO: other formats
-        let symtab_len = symtab_count * elf::SIZEOF_SYM64;
+        let symtab_len = symtab_count * elf::Sym::size_with(&ctx);
         offset += symtab_len;
         let symtab_index = e_shnum;
         e_shnum += 1;
@@ -147,8 +162,7 @@ impl Object {
             if count != 0 {
                 offset = align(offset, 8);
                 section_offsets[index].reloc_offset = offset;
-                // TODO: other formats
-                let len = count * elf::SIZEOF_RELA64;
+                let len = count * elf::Reloc::size_with(&reloc_ctx);
                 section_offsets[index].reloc_len = len;
                 offset += len;
             }
@@ -165,18 +179,11 @@ impl Object {
         // Calculate size of section headers.
         offset = align(offset, 8);
         let e_shoff = offset;
-        // TODO: other formats
-        let e_shentsize = elf::SIZEOF_SHDR64;
+        let e_shentsize = elf::SectionHeader::size_with(&ctx);
         offset += e_shnum * e_shentsize;
 
         // Start writing.
         let mut buffer = Vec::with_capacity(offset);
-
-        // TODO: other formats
-        let ctx = goblin::container::Ctx::new(
-            goblin::container::Container::Big,
-            goblin::container::Endian::Little,
-        );
 
         // Write file header.
         let mut header = elf::Header {
@@ -262,6 +269,7 @@ impl Object {
                 SymbolKind::File => elf::STT_FILE,
                 SymbolKind::Common => elf::STT_COMMON,
                 SymbolKind::Tls => elf::STT_TLS,
+                SymbolKind::Label => unimplemented!(),
             };
             // TODO: vis
             let st_other = 0;
@@ -308,7 +316,7 @@ impl Object {
                 write_align(&mut buffer, 8);
                 debug_assert_eq!(section_offsets[index].reloc_offset, buffer.len());
                 for reloc in &section.relocations {
-                    // TODO: other formats
+                    // TODO: other machines
                     let r_type = match (reloc.kind, reloc.size) {
                         (RelocationKind::Absolute, 64) => elf::reloc::R_X86_64_64,
                         (RelocationKind::Relative, 32) => elf::reloc::R_X86_64_PC32,
@@ -333,7 +341,7 @@ impl Object {
                                 r_sym,
                                 r_type,
                             },
-                            (true, ctx),
+                            reloc_ctx,
                         )
                         .unwrap();
                 }
@@ -378,7 +386,10 @@ impl Object {
                 SectionKind::ReadOnlyData => elf::SHF_ALLOC,
                 SectionKind::ReadOnlyString => elf::SHF_ALLOC | elf::SHF_STRINGS | elf::SHF_MERGE,
                 SectionKind::OtherString => elf::SHF_STRINGS | elf::SHF_MERGE,
-                SectionKind::Other | SectionKind::Unknown | SectionKind::Metadata => 0,
+                SectionKind::Other
+                | SectionKind::Unknown
+                | SectionKind::Metadata
+                | SectionKind::Linker => 0,
             };
             let sh_entsize = match section.kind {
                 SectionKind::ReadOnlyString | SectionKind::OtherString => 1,
@@ -415,7 +426,7 @@ impl Object {
                             sh_link: symtab_index as u32,
                             sh_info: section_offsets[index].index as u32,
                             sh_addralign: 8,
-                            sh_entsize: elf::SIZEOF_RELA64 as u64,
+                            sh_entsize: elf::Reloc::size_with(&reloc_ctx) as u64,
                         },
                         ctx,
                     )
@@ -436,7 +447,7 @@ impl Object {
                     sh_link: strtab_index as u32,
                     sh_info: symtab_count_local as u32,
                     sh_addralign: 8,
-                    sh_entsize: elf::SIZEOF_SYM64 as u64,
+                    sh_entsize: elf::Sym::size_with(&ctx) as u64,
                 },
                 ctx,
             )

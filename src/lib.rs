@@ -1,5 +1,6 @@
 pub use object::{Binding, Format, Machine, RelocationKind, SectionKind, SymbolKind};
 
+mod coff;
 mod elf;
 mod util;
 
@@ -66,6 +67,7 @@ impl Object {
     pub fn write(&self, format: Format) -> Vec<u8> {
         match format {
             Format::Elf64 => self.write_elf(),
+            Format::Coff => self.write_coff(),
             _ => unimplemented!(),
         }
     }
@@ -125,17 +127,6 @@ pub struct Section {
     pub relocations: Vec<Relocation>,
 }
 
-#[derive(Default, Clone, Copy)]
-struct SectionOffsets {
-    index: usize,
-    offset: usize,
-    str_offset: usize,
-    reloc_index: usize,
-    reloc_offset: usize,
-    reloc_len: usize,
-    reloc_str_offset: usize,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct SymbolId(pub usize);
 
@@ -155,12 +146,6 @@ pub struct Symbol {
     //pub vis: u8,
     // st_shndx
     pub section: Option<SectionId>,
-}
-
-#[derive(Default, Clone, Copy)]
-struct SymbolOffsets {
-    index: usize,
-    str_offset: usize,
 }
 
 #[derive(Debug)]

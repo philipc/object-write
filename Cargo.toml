@@ -5,6 +5,7 @@ authors = ["Philip Craig <philipjcraig@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+crc32fast = "1"
 object = { path = "../object" }
 scroll = "0.9"
 
