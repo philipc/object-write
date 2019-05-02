@@ -119,7 +119,7 @@ impl Object {
         strtab.push(0);
         let mut calc_symbol = |index: usize, symbol: &Symbol, symtab_count: &mut usize| {
             symbol_offsets[index].index = *symtab_count;
-            if !symbol.name.is_empty() {
+            if !symbol.name.is_empty() && symbol.kind != SymbolKind::Section {
                 symbol_offsets[index].str_offset = strtab.len();
                 strtab.extend_from_slice(&symbol.name);
                 strtab.push(0);
@@ -263,8 +263,20 @@ impl Object {
             };
             let st_type = match symbol.kind {
                 SymbolKind::Unknown | SymbolKind::Null => elf::STT_NOTYPE,
-                SymbolKind::Text => elf::STT_FUNC,
-                SymbolKind::Data => elf::STT_OBJECT,
+                SymbolKind::Text => {
+                    if symbol.section.is_none() {
+                        elf::STT_NOTYPE
+                    } else {
+                        elf::STT_FUNC
+                    }
+                }
+                SymbolKind::Data => {
+                    if symbol.section.is_none() {
+                        elf::STT_NOTYPE
+                    } else {
+                        elf::STT_OBJECT
+                    }
+                }
                 SymbolKind::Section => elf::STT_SECTION,
                 SymbolKind::File => elf::STT_FILE,
                 SymbolKind::Common => elf::STT_COMMON,

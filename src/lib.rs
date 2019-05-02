@@ -40,6 +40,7 @@ pub struct Object {
     // TODO: PT_DYNAMIC
     // TODO: PT_INTERP
     // TODO: PT_NOTE
+    // TODO: .note.GNU-stack
 }
 
 impl Object {
