@@ -65,7 +65,7 @@ impl Object {
         SymbolId(id)
     }
 
-    pub fn write(&self, format: Format) -> Vec<u8> {
+    pub fn write(&mut self, format: Format) -> Vec<u8> {
         match format {
             Format::Elf64 => self.write_elf(),
             Format::Coff => self.write_coff(),
