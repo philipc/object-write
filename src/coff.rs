@@ -271,6 +271,7 @@ impl Object {
         debug_assert_eq!(symtab_offset, buffer.len());
         for (index, symbol) in self.symbols.iter().enumerate() {
             let mut name = &symbol.name[..];
+            let mut section_number = symbol.section.map(|x| x.0 + 1).unwrap_or(0) as i16;
             let typ = if symbol.kind == SymbolKind::Text {
                 coff::IMAGE_SYM_DTYPE_FUNCTION << coff::IMAGE_SYM_DTYPE_SHIFT
             } else {
@@ -280,6 +281,7 @@ impl Object {
                 SymbolKind::File => {
                     // Name goes in auxilary symbol records.
                     name = b".file";
+                    section_number = coff::IMAGE_SYM_DEBUG;
                     coff::IMAGE_SYM_CLASS_FILE
                 }
                 SymbolKind::Section => coff::IMAGE_SYM_CLASS_STATIC,
@@ -295,7 +297,6 @@ impl Object {
                 }
                 _ => unimplemented!("{:?}", symbol),
             };
-            let section_number = symbol.section.map(|x| x.0 + 1).unwrap_or(0) as i16;
             let number_of_aux_symbols = symbol_offsets[index].aux_count;
             let mut coff_symbol = coff::Symbol {
                 name: [0; 8],
