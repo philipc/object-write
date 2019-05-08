@@ -59,6 +59,37 @@ impl Object {
         SectionId(id)
     }
 
+    pub fn add_section_symbol(&mut self, section: SectionId) -> SymbolId {
+        let symbol = self.add_symbol(Symbol {
+            name: Vec::new(),
+            value: 0,
+            size: 0,
+            binding: Binding::Local,
+            kind: SymbolKind::Section,
+            section: Some(section),
+        });
+        self.sections[section.0].symbol = Some(symbol);
+        symbol
+    }
+
+    /// Append data to an existing section. Returns of the section offset of the data.
+    pub fn append_section_data(&mut self, section: SectionId, data: &[u8], align: u64) -> u64 {
+        debug_assert_eq!(align & (align - 1), 0);
+        let section = &mut self.sections[section.0];
+        if section.align < align {
+            section.align = align;
+        }
+        let align = align as usize;
+        let mut offset = section.data.len();
+        if offset & (align - 1) != 0 {
+            offset += align - (offset & (align - 1));
+            section.data.resize(offset, 0);
+        }
+        section.data.extend(data);
+        section.size = section.data.len() as u64;
+        offset as u64
+    }
+
     pub fn add_symbol(&mut self, symbol: Symbol) -> SymbolId {
         let id = self.symbols.len();
         self.symbols.push(symbol);
@@ -136,6 +167,22 @@ pub struct Section {
     pub relocations: Vec<Relocation>,
     // For convenience, not emitted.
     pub symbol: Option<SymbolId>,
+}
+
+impl Section {
+    pub fn new(name: Vec<u8>, kind: SectionKind, data: Vec<u8>, align: u64) -> Self {
+        Section {
+            name,
+            segment_name: Vec::new(),
+            kind,
+            address: 0,
+            size: data.len() as u64,
+            align,
+            data,
+            relocations: Vec::new(),
+            symbol: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
