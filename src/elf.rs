@@ -59,6 +59,80 @@ struct SymbolOffsets {
 }
 
 impl Object {
+    pub(crate) fn finalize_elf(&mut self) {
+        self.finalize_elf_section_names();
+        self.finalize_elf_relocations();
+    }
+
+    /// Set the section names expected by the linker.
+    fn finalize_elf_section_names(&mut self) {
+        for section in &mut self.sections {
+            if section.name.is_empty() || section.name[0] != b'.' {
+                let base = match section.kind {
+                    SectionKind::Text => &b".text"[..],
+                    SectionKind::Data => &b".data"[..],
+                    SectionKind::ReadOnlyData | SectionKind::ReadOnlyString => &b".rodata"[..],
+                    _ => continue,
+                };
+                let mut name = base.to_vec();
+                if !section.name.is_empty() {
+                    name.push(b'.');
+                    name.extend(&section.name);
+                }
+                section.name = name;
+            }
+        }
+    }
+
+    /// Use section symbols for relocations where required to avoid preemption.
+    // Otherwise, the linker will fail with:
+    //     relocation R_X86_64_PC32 against symbol `SomeSymbolName' can not be used when
+    //     making a shared object; recompile with -fPIC
+    // TODO: investigate whether the caller should be required to get this right in the first
+    // place. This may depend on what is required for other object file formats.
+    fn finalize_elf_relocations(&mut self) {
+        fn require_symbol_relocation(reloc: &Relocation, symbol: &Symbol) -> bool {
+            match symbol.kind {
+                SymbolKind::Text | SymbolKind::Data => {}
+                _ => return true,
+            }
+            match reloc.kind {
+                // Anything using GOT or PLT is preemptible.
+                // We also require that `Other` relocations must already be correct.
+                RelocationKind::GotOffset
+                | RelocationKind::PltRelative
+                | RelocationKind::GotRelative
+                | RelocationKind::Other(_) => return true,
+                // Absolute relocations are preemptible for non-local data.
+                // TODO: not sure if this rule is exactly correct
+                // This rule was added to handle global data references in debuginfo.
+                // Maybe this should be a new relocation kind so that the caller can decide.
+                RelocationKind::Absolute => {
+                    if symbol.binding != Binding::Local && symbol.kind == SymbolKind::Data {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+            false
+        }
+
+        let section_symbols: Vec<_> = self.sections.iter().map(|section| section.symbol).collect();
+        for section in &mut self.sections {
+            for reloc in &mut section.relocations {
+                let symbol = &self.symbols[reloc.symbol.0];
+                if require_symbol_relocation(reloc, symbol) {
+                    continue;
+                }
+                if let Some(section) = symbol.section {
+                    let section_symbol = section_symbols[section.0].unwrap();
+                    reloc.symbol = section_symbol;
+                    reloc.addend += symbol.value as i64;
+                }
+            }
+        }
+    }
+
     pub(crate) fn write_elf(&self) -> Vec<u8> {
         // Calculate offsets of everything, and build strtab/shstrtab.
         let mut offset = 0;
@@ -126,6 +200,7 @@ impl Object {
             }
             *symtab_count += 1;
         };
+        // Local symbols must come before global.
         for (index, symbol) in self.symbols.iter().enumerate() {
             if symbol.binding == Binding::Unknown || symbol.binding == Binding::Local {
                 calc_symbol(index, symbol, &mut symtab_count);
@@ -342,7 +417,7 @@ impl Object {
                         (RelocationKind::Absolute, 8) => elf::reloc::R_X86_64_8,
                         (RelocationKind::Relative, 8) => elf::reloc::R_X86_64_PC8,
                         (RelocationKind::Other(x), _) => x,
-                        _ => unimplemented!(),
+                        _ => unimplemented!("{:?}", reloc),
                     };
                     let r_sym = symbol_offsets[reloc.symbol.0].index;
                     buffer

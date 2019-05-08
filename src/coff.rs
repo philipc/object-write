@@ -29,7 +29,7 @@ struct SymbolOffsets {
 }
 
 impl Object {
-    pub(crate) fn legalize_coff(&mut self) {
+    pub(crate) fn finalize_coff(&mut self) {
         // Set the section names expected by the linker.
         for section in &mut self.sections {
             if section.name.is_empty() || section.name[0] != b'.' {
@@ -87,6 +87,7 @@ impl Object {
                         size: 64,
                         addend: 0,
                     }],
+                    symbol: None,
                 });
                 let symbol_id = SymbolId(self.symbols.len() + refptr_symbols.len());
                 let mut name = b".refptr.".to_vec();
@@ -127,9 +128,7 @@ impl Object {
         self.symbols.extend(refptr_symbols);
     }
 
-    pub(crate) fn write_coff(&mut self) -> Vec<u8> {
-        self.legalize_coff();
-
+    pub(crate) fn write_coff(&self) -> Vec<u8> {
         // Calculate offsets of everything, and build strtab.
         let mut offset = 0;
         // First 4 bytes of strtab are the length.

@@ -65,7 +65,15 @@ impl Object {
         SymbolId(id)
     }
 
-    pub fn write(&mut self, format: Format) -> Vec<u8> {
+    pub fn finalize(&mut self, format: Format) {
+        match format {
+            Format::Elf64 => self.finalize_elf(),
+            Format::Coff => self.finalize_coff(),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn write(&self, format: Format) -> Vec<u8> {
         match format {
             Format::Elf64 => self.write_elf(),
             Format::Coff => self.write_coff(),
@@ -98,7 +106,7 @@ pub struct Segment {
 }
 */
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SectionId(pub usize);
 
 #[derive(Debug)]
@@ -126,9 +134,11 @@ pub struct Section {
     pub data: Vec<u8>,
     // SHT_RELA, SHT_REL
     pub relocations: Vec<Relocation>,
+    // For convenience, not emitted.
+    pub symbol: Option<SymbolId>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SymbolId(pub usize);
 
 #[derive(Debug)]

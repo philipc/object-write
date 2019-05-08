@@ -59,6 +59,7 @@ fn main() {
             align: in_section.align(),
             data: data.into(),
             relocations: Vec::new(),
+            symbol: None,
         };
         let section_id = out_object.add_section(out_section);
         out_sections.insert(in_section.index(), section_id);
