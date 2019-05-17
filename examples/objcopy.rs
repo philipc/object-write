@@ -37,7 +37,7 @@ fn main() {
         }
     };
 
-    let mut out_object = write::Object::new(in_object.machine());
+    let mut out_object = write::Object::new(in_object.architecture());
     out_object.entry = in_object.entry();
 
     let mut out_sections = HashMap::new();

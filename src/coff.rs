@@ -213,9 +213,9 @@ impl Object {
 
         // Write file header.
         let header = coff::CoffHeader {
-            machine: match self.machine {
-                Machine::X86 => coff::COFF_MACHINE_X86,
-                Machine::X86_64 => coff::COFF_MACHINE_X86_64,
+            machine: match self.architecture {
+                Architecture::I386 => coff::COFF_MACHINE_X86,
+                Architecture::X86_64 => coff::COFF_MACHINE_X86_64,
                 _ => unimplemented!(),
             },
             number_of_sections: self.sections.len() as u16,
@@ -323,8 +323,8 @@ impl Object {
                 for reloc in &section.relocations {
                     //assert!(reloc.implicit_addend);
                     // TODO: other machines
-                    let typ = match self.machine {
-                        Machine::X86 => match (reloc.kind, reloc.size, reloc.addend) {
+                    let typ = match self.architecture {
+                        Architecture::I386 => match (reloc.kind, reloc.size, reloc.addend) {
                             (RelocationKind::Absolute, 16, 0) => coff::IMAGE_REL_I386_DIR16,
                             (RelocationKind::Relative, 16, 0) => coff::IMAGE_REL_I386_REL16,
                             (RelocationKind::Absolute, 32, 0) => coff::IMAGE_REL_I386_DIR32,
@@ -335,7 +335,7 @@ impl Object {
                             (RelocationKind::Other(x), _, _) => x as u16,
                             _ => unimplemented!(),
                         },
-                        Machine::X86_64 => match (reloc.kind, reloc.size, reloc.addend) {
+                        Architecture::X86_64 => match (reloc.kind, reloc.size, reloc.addend) {
                             (RelocationKind::Absolute, 64, 0) => coff::IMAGE_REL_AMD64_ADDR64,
                             (RelocationKind::Absolute, 32, 0) => coff::IMAGE_REL_AMD64_ADDR32,
                             (RelocationKind::ImageOffset, 32, 0) => coff::IMAGE_REL_AMD64_ADDR32NB,

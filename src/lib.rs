@@ -1,4 +1,4 @@
-pub use object::{Binding, Format, Machine, RelocationKind, SectionKind, SymbolKind};
+pub use object::{Architecture, BinaryFormat, Binding, RelocationKind, SectionKind, SymbolKind};
 
 mod coff;
 mod elf;
@@ -18,7 +18,7 @@ pub struct Object {
     // TODO: e_type
     //type_: u16,
     // e_machine
-    pub machine: Machine,
+    pub architecture: Architecture,
     // e_version: constant
     // e_entry
     pub entry: u64,
@@ -44,9 +44,9 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn new(machine: Machine) -> Object {
+    pub fn new(architecture: Architecture) -> Object {
         Object {
-            machine,
+            architecture,
             entry: 0,
             sections: Vec::new(),
             symbols: Vec::new(),
@@ -96,18 +96,18 @@ impl Object {
         SymbolId(id)
     }
 
-    pub fn finalize(&mut self, format: Format) {
+    pub fn finalize(&mut self, format: BinaryFormat) {
         match format {
-            Format::Elf64 => self.finalize_elf(),
-            Format::Coff => self.finalize_coff(),
+            BinaryFormat::Elf => self.finalize_elf(),
+            BinaryFormat::Coff => self.finalize_coff(),
             _ => unimplemented!(),
         }
     }
 
-    pub fn write(&self, format: Format) -> Vec<u8> {
+    pub fn write(&self, format: BinaryFormat) -> Vec<u8> {
         match format {
-            Format::Elf64 => self.write_elf(),
-            Format::Coff => self.write_coff(),
+            BinaryFormat::Elf => self.write_elf(),
+            BinaryFormat::Coff => self.write_coff(),
             _ => unimplemented!(),
         }
     }

@@ -5,11 +5,6 @@ use crate::util::*;
 use crate::*;
 
 mod elf {
-    pub use goblin::elf::header::Header;
-    pub use goblin::elf::header::ELFMAG;
-    pub use goblin::elf::header::{EI_CLASS, ELFCLASS64};
-    pub use goblin::elf::header::{EI_DATA, ELFDATA2LSB};
-
     pub const EI_VERSION: usize = 6;
     pub const EV_CURRENT: u8 = 1;
 
@@ -18,27 +13,11 @@ mod elf {
 
     pub const EI_ABIVERSION: usize = 8;
 
-    pub use goblin::elf::header::ET_REL;
-    pub use goblin::elf::header::{EM_386, EM_X86_64};
-
-    pub use goblin::elf::program_header::ProgramHeader;
-    pub use goblin::elf::section_header::SectionHeader;
-    pub use goblin::elf::section_header::SHN_ABS;
-    pub use goblin::elf::section_header::{
-        SHF_ALLOC, SHF_EXECINSTR, SHF_INFO_LINK, SHF_MERGE, SHF_STRINGS, SHF_TLS, SHF_WRITE,
-    };
-    pub use goblin::elf::section_header::{
-        SHT_NOBITS, SHT_PROGBITS, SHT_RELA, SHT_STRTAB, SHT_SYMTAB,
-    };
-
-    pub use goblin::elf::sym::Sym;
-    pub use goblin::elf::sym::{STB_GLOBAL, STB_LOCAL, STB_WEAK};
-    pub use goblin::elf::sym::{
-        STT_COMMON, STT_FILE, STT_FUNC, STT_NOTYPE, STT_OBJECT, STT_SECTION, STT_TLS,
-    };
-
-    pub use goblin::elf::reloc;
-    pub use goblin::elf::reloc::Reloc;
+    pub use goblin::elf::header::*;
+    pub use goblin::elf::program_header::*;
+    pub use goblin::elf::reloc::*;
+    pub use goblin::elf::section_header::*;
+    pub use goblin::elf::sym::*;
 }
 
 #[derive(Default, Clone, Copy)]
@@ -266,9 +245,11 @@ impl Object {
             // TODO: other formats
             e_type: elf::ET_REL,
             // TODO: other formats
-            e_machine: match self.machine {
-                Machine::X86 => elf::EM_386,
-                Machine::X86_64 => elf::EM_X86_64,
+            e_machine: match self.architecture {
+                Architecture::Arm => elf::EM_ARM,
+                Architecture::Aarch64 => elf::EM_AARCH64,
+                Architecture::I386 => elf::EM_386,
+                Architecture::X86_64 => elf::EM_X86_64,
                 _ => unimplemented!(),
             },
             // FIXME: validate input
@@ -405,17 +386,17 @@ impl Object {
                 for reloc in &section.relocations {
                     // TODO: other machines
                     let r_type = match (reloc.kind, reloc.size) {
-                        (RelocationKind::Absolute, 64) => elf::reloc::R_X86_64_64,
-                        (RelocationKind::Relative, 32) => elf::reloc::R_X86_64_PC32,
-                        (RelocationKind::GotOffset, 32) => elf::reloc::R_X86_64_GOT32,
-                        (RelocationKind::PltRelative, 32) => elf::reloc::R_X86_64_PLT32,
-                        (RelocationKind::GotRelative, 32) => elf::reloc::R_X86_64_GOTPCREL,
-                        (RelocationKind::Absolute, 32) => elf::reloc::R_X86_64_32,
-                        (RelocationKind::AbsoluteSigned, 32) => elf::reloc::R_X86_64_32S,
-                        (RelocationKind::Absolute, 16) => elf::reloc::R_X86_64_16,
-                        (RelocationKind::Relative, 16) => elf::reloc::R_X86_64_PC16,
-                        (RelocationKind::Absolute, 8) => elf::reloc::R_X86_64_8,
-                        (RelocationKind::Relative, 8) => elf::reloc::R_X86_64_PC8,
+                        (RelocationKind::Absolute, 64) => elf::R_X86_64_64,
+                        (RelocationKind::Relative, 32) => elf::R_X86_64_PC32,
+                        (RelocationKind::GotOffset, 32) => elf::R_X86_64_GOT32,
+                        (RelocationKind::PltRelative, 32) => elf::R_X86_64_PLT32,
+                        (RelocationKind::GotRelative, 32) => elf::R_X86_64_GOTPCREL,
+                        (RelocationKind::Absolute, 32) => elf::R_X86_64_32,
+                        (RelocationKind::AbsoluteSigned, 32) => elf::R_X86_64_32S,
+                        (RelocationKind::Absolute, 16) => elf::R_X86_64_16,
+                        (RelocationKind::Relative, 16) => elf::R_X86_64_PC16,
+                        (RelocationKind::Absolute, 8) => elf::R_X86_64_8,
+                        (RelocationKind::Relative, 8) => elf::R_X86_64_PC8,
                         (RelocationKind::Other(x), _) => x,
                         _ => unimplemented!("{:?}", reloc),
                     };
