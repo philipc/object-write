@@ -119,11 +119,15 @@ impl Object {
         let mut strtab = Vec::new();
         let mut shstrtab = Vec::new();
 
-        // TODO: other formats
-        let ctx = goblin::container::Ctx::new(
-            goblin::container::Container::Big,
-            goblin::container::Endian::Little,
-        );
+        let container = match self.pointer_width {
+            PointerWidth::U16 | PointerWidth::U32 => goblin::container::Container::Little,
+            PointerWidth::U64 => goblin::container::Container::Big,
+        };
+        let endian = match self.endianness {
+            Endianness::Little => goblin::container::Endian::Little,
+            Endianness::Big => goblin::container::Endian::Big,
+        };
+        let ctx = goblin::container::Ctx::new(container, endian);
         let reloc_ctx = (true, ctx);
 
         // ELF header.

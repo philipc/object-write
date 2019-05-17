@@ -136,6 +136,7 @@ impl Object {
         let mut strtab = vec![0; 4];
 
         // COFF header.
+        debug_assert_eq!(self.endianness, Endianness::Little);
         let ctx = scroll::LE;
         offset += coff::CoffHeader::size_with(&ctx);
 
