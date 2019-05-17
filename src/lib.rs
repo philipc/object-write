@@ -6,6 +6,7 @@ mod util;
 
 #[derive(Debug)]
 pub struct Object {
+    pub format: BinaryFormat,
     // endian/word size/..?
     //encoding: Encoding,
     // e_ident
@@ -44,8 +45,9 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn new(architecture: Architecture) -> Object {
+    pub fn new(format: BinaryFormat, architecture: Architecture) -> Object {
         Object {
+            format,
             architecture,
             entry: 0,
             sections: Vec::new(),
@@ -96,16 +98,16 @@ impl Object {
         SymbolId(id)
     }
 
-    pub fn finalize(&mut self, format: BinaryFormat) {
-        match format {
+    pub fn finalize(&mut self) {
+        match self.format {
             BinaryFormat::Elf => self.finalize_elf(),
             BinaryFormat::Coff => self.finalize_coff(),
             _ => unimplemented!(),
         }
     }
 
-    pub fn write(&self, format: BinaryFormat) -> Vec<u8> {
-        match format {
+    pub fn write(&self) -> Vec<u8> {
+        match self.format {
             BinaryFormat::Elf => self.write_elf(),
             BinaryFormat::Coff => self.write_coff(),
             _ => unimplemented!(),

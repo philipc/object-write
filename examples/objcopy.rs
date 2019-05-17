@@ -37,7 +37,7 @@ fn main() {
         }
     };
 
-    let mut out_object = write::Object::new(in_object.architecture());
+    let mut out_object = write::Object::new(in_object.format(), in_object.architecture());
     out_object.entry = in_object.entry();
 
     let mut out_sections = HashMap::new();
@@ -102,7 +102,8 @@ fn main() {
         }
     }
 
-    let out_data = out_object.write(in_object.format());
+    out_object.finalize();
+    let out_data = out_object.write();
     if let Err(err) = fs::write(&out_file_path, out_data) {
         eprintln!("Failed to write file '{}': {}", out_file_path, err);
         process::exit(1);
