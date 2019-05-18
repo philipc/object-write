@@ -70,37 +70,44 @@ impl Object {
     // TODO: investigate whether the caller should be required to get this right in the first
     // place. This may depend on what is required for other object file formats.
     fn finalize_elf_relocations(&mut self) {
-        fn require_symbol_relocation(reloc: &Relocation, symbol: &Symbol) -> bool {
+        // Return true if we should use a section symbol to avoid preemption.
+        fn want_section_symbol(reloc: &Relocation, symbol: &Symbol) -> bool {
+            if symbol.binding == Binding::Local {
+                // Local symbols are never preemptible, so using the section symbol
+                // is not required.
+                return false;
+            }
             match symbol.kind {
                 SymbolKind::Text | SymbolKind::Data => {}
-                _ => return true,
+                _ => return false,
             }
             match reloc.kind {
                 // Anything using GOT or PLT is preemptible.
                 // We also require that `Other` relocations must already be correct.
-                RelocationKind::GotOffset
-                | RelocationKind::PltRelative
+                RelocationKind::Got
                 | RelocationKind::GotRelative
-                | RelocationKind::Other(_) => return true,
+                | RelocationKind::GotBaseRelative
+                | RelocationKind::PltRelative
+                | RelocationKind::Other(_) => return false,
                 // Absolute relocations are preemptible for non-local data.
                 // TODO: not sure if this rule is exactly correct
                 // This rule was added to handle global data references in debuginfo.
                 // Maybe this should be a new relocation kind so that the caller can decide.
                 RelocationKind::Absolute => {
-                    if symbol.binding != Binding::Local && symbol.kind == SymbolKind::Data {
-                        return true;
+                    if symbol.kind == SymbolKind::Data {
+                        return false;
                     }
                 }
                 _ => {}
             }
-            false
+            true
         }
 
         let section_symbols: Vec<_> = self.sections.iter().map(|section| section.symbol).collect();
         for section in &mut self.sections {
             for reloc in &mut section.relocations {
                 let symbol = &self.symbols[reloc.symbol.0];
-                if require_symbol_relocation(reloc, symbol) {
+                if !want_section_symbol(reloc, symbol) {
                     continue;
                 }
                 if let Some(section) = symbol.section {
@@ -119,16 +126,25 @@ impl Object {
         let mut strtab = Vec::new();
         let mut shstrtab = Vec::new();
 
-        let container = match self.pointer_width {
-            PointerWidth::U16 | PointerWidth::U32 => goblin::container::Container::Little,
-            PointerWidth::U64 => goblin::container::Container::Big,
+        // FIXME: is_rela choice needs to match the user's section data
+        let (e_machine, is_rela) = match self.architecture {
+            Architecture::Arm => (elf::EM_ARM, false),
+            Architecture::Aarch64 => (elf::EM_AARCH64, false),
+            Architecture::I386 => (elf::EM_386, false),
+            Architecture::X86_64 => (elf::EM_X86_64, true),
+            _ => unimplemented!(),
+        };
+
+        let (container, pointer_align) = match self.pointer_width {
+            PointerWidth::U16 | PointerWidth::U32 => (goblin::container::Container::Little, 4),
+            PointerWidth::U64 => (goblin::container::Container::Big, 8),
         };
         let endian = match self.endianness {
             Endianness::Little => goblin::container::Endian::Little,
             Endianness::Big => goblin::container::Endian::Big,
         };
         let ctx = goblin::container::Ctx::new(container, endian);
-        let reloc_ctx = (true, ctx);
+        let reloc_ctx = (is_rela, ctx);
 
         // ELF header.
         let e_ehsize = elf::Header::size_with(&ctx);
@@ -159,7 +175,10 @@ impl Object {
             let count = section.relocations.len();
             if count != 0 {
                 section_offsets[index].reloc_str_offset = shstrtab.len();
-                shstrtab.extend_from_slice(&b".rela"[..]);
+                shstrtab.extend_from_slice(&b".rel"[..]);
+                if is_rela {
+                    shstrtab.push(b'a');
+                }
                 shstrtab.extend_from_slice(&section.name);
                 shstrtab.push(0);
 
@@ -176,7 +195,7 @@ impl Object {
         strtab.push(0);
         let mut calc_symbol = |index: usize, symbol: &Symbol, symtab_count: &mut usize| {
             symbol_offsets[index].index = *symtab_count;
-            if !symbol.name.is_empty() && symbol.kind != SymbolKind::Section {
+            if symbol.kind != SymbolKind::Section {
                 symbol_offsets[index].str_offset = strtab.len();
                 strtab.extend_from_slice(&symbol.name);
                 strtab.push(0);
@@ -248,14 +267,7 @@ impl Object {
             e_ident: [0; 16],
             // TODO: other formats
             e_type: elf::ET_REL,
-            // TODO: other formats
-            e_machine: match self.architecture {
-                Architecture::Arm => elf::EM_ARM,
-                Architecture::Aarch64 => elf::EM_AARCH64,
-                Architecture::I386 => elf::EM_386,
-                Architecture::X86_64 => elf::EM_X86_64,
-                _ => unimplemented!(),
-            },
+            e_machine,
             // FIXME: validate input
             e_version: elf::EV_CURRENT.into(),
             e_entry: self.entry,
@@ -274,10 +286,16 @@ impl Object {
             e_shstrndx: shstrtab_index as u16,
         };
         header.e_ident[0..4].copy_from_slice(elf::ELFMAG);
-        // TODO: other formats
-        header.e_ident[elf::EI_CLASS] = elf::ELFCLASS64;
-        // FIXME: validate input
-        header.e_ident[elf::EI_DATA] = elf::ELFDATA2LSB;
+        header.e_ident[elf::EI_CLASS] = if container.is_big() {
+            elf::ELFCLASS64
+        } else {
+            elf::ELFCLASS32
+        };
+        header.e_ident[elf::EI_DATA] = if endian.is_little() {
+            elf::ELFDATA2LSB
+        } else {
+            elf::ELFDATA2MSB
+        };
         // FIXME: validate input
         header.e_ident[elf::EI_VERSION] = elf::EV_CURRENT;
         // FIXME: validate input
@@ -388,21 +406,37 @@ impl Object {
                 write_align(&mut buffer, 8);
                 debug_assert_eq!(section_offsets[index].reloc_offset, buffer.len());
                 for reloc in &section.relocations {
-                    // TODO: other machines
-                    let r_type = match (reloc.kind, reloc.size) {
-                        (RelocationKind::Absolute, 64) => elf::R_X86_64_64,
-                        (RelocationKind::Relative, 32) => elf::R_X86_64_PC32,
-                        (RelocationKind::GotOffset, 32) => elf::R_X86_64_GOT32,
-                        (RelocationKind::PltRelative, 32) => elf::R_X86_64_PLT32,
-                        (RelocationKind::GotRelative, 32) => elf::R_X86_64_GOTPCREL,
-                        (RelocationKind::Absolute, 32) => elf::R_X86_64_32,
-                        (RelocationKind::AbsoluteSigned, 32) => elf::R_X86_64_32S,
-                        (RelocationKind::Absolute, 16) => elf::R_X86_64_16,
-                        (RelocationKind::Relative, 16) => elf::R_X86_64_PC16,
-                        (RelocationKind::Absolute, 8) => elf::R_X86_64_8,
-                        (RelocationKind::Relative, 8) => elf::R_X86_64_PC8,
-                        (RelocationKind::Other(x), _) => x,
-                        _ => unimplemented!("{:?}", reloc),
+                    let r_type = match self.architecture {
+                        Architecture::I386 => match (reloc.kind, reloc.size) {
+                            (RelocationKind::Absolute, 32) => elf::R_386_32,
+                            (RelocationKind::Relative, 32) => elf::R_386_PC32,
+                            (RelocationKind::Got, 32) => elf::R_386_GOT32,
+                            (RelocationKind::PltRelative, 32) => elf::R_386_PLT32,
+                            (RelocationKind::GotBaseOffset, 32) => elf::R_386_GOTOFF,
+                            (RelocationKind::GotBaseRelative, 32) => elf::R_386_GOTPC,
+                            (RelocationKind::Absolute, 16) => elf::R_386_16,
+                            (RelocationKind::Relative, 16) => elf::R_386_PC16,
+                            (RelocationKind::Absolute, 8) => elf::R_386_8,
+                            (RelocationKind::Relative, 8) => elf::R_386_PC8,
+                            (RelocationKind::Other(x), _) => x,
+                            _ => unimplemented!("{:?}", reloc),
+                        },
+                        Architecture::X86_64 => match (reloc.kind, reloc.size) {
+                            (RelocationKind::Absolute, 64) => elf::R_X86_64_64,
+                            (RelocationKind::Relative, 32) => elf::R_X86_64_PC32,
+                            (RelocationKind::Got, 32) => elf::R_X86_64_GOT32,
+                            (RelocationKind::PltRelative, 32) => elf::R_X86_64_PLT32,
+                            (RelocationKind::GotRelative, 32) => elf::R_X86_64_GOTPCREL,
+                            (RelocationKind::Absolute, 32) => elf::R_X86_64_32,
+                            (RelocationKind::AbsoluteSigned, 32) => elf::R_X86_64_32S,
+                            (RelocationKind::Absolute, 16) => elf::R_X86_64_16,
+                            (RelocationKind::Relative, 16) => elf::R_X86_64_PC16,
+                            (RelocationKind::Absolute, 8) => elf::R_X86_64_8,
+                            (RelocationKind::Relative, 8) => elf::R_X86_64_PC8,
+                            (RelocationKind::Other(x), _) => x,
+                            _ => unimplemented!("{:?}", reloc),
+                        },
+                        _ => unimplemented!(),
                     };
                     let r_sym = symbol_offsets[reloc.symbol.0].index;
                     buffer
@@ -490,14 +524,14 @@ impl Object {
                     .iowrite_with(
                         elf::SectionHeader {
                             sh_name: section_offsets[index].reloc_str_offset,
-                            sh_type: elf::SHT_RELA,
+                            sh_type: if is_rela { elf::SHT_RELA } else { elf::SHT_REL },
                             sh_flags: elf::SHF_INFO_LINK.into(),
                             sh_addr: 0,
                             sh_offset: section_offsets[index].reloc_offset as u64,
                             sh_size: section_offsets[index].reloc_len as u64,
                             sh_link: symtab_index as u32,
                             sh_info: section_offsets[index].index as u32,
-                            sh_addralign: 8,
+                            sh_addralign: pointer_align,
                             sh_entsize: elf::Reloc::size_with(&reloc_ctx) as u64,
                         },
                         ctx,
@@ -518,7 +552,7 @@ impl Object {
                     sh_size: symtab_len as u64,
                     sh_link: strtab_index as u32,
                     sh_info: symtab_count_local as u32,
-                    sh_addralign: 8,
+                    sh_addralign: pointer_align,
                     sh_entsize: elf::Sym::size_with(&ctx) as u64,
                 },
                 ctx,
