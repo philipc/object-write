@@ -72,10 +72,20 @@ impl Object {
     fn finalize_elf_relocations(&mut self) {
         // Return true if we should use a section symbol to avoid preemption.
         fn want_section_symbol(reloc: &Relocation, symbol: &Symbol) -> bool {
-            if symbol.binding == Binding::Local {
-                // Local symbols are never preemptible, so using the section symbol
-                // is not required.
-                return false;
+            match symbol.binding {
+                Binding::Unknown | Binding::Local => {
+                    // Local symbols are never preemptible, so using the section symbol
+                    // is not required.
+                    return false;
+                }
+                Binding::Global | Binding::Weak => {}
+            }
+            match symbol.visibility {
+                Visibility::Unknown | Visibility::Default => {}
+                Visibility::Hidden | Visibility::Protected => {
+                    // Never preemptible, so using the section symbol is not required.
+                    return false;
+                }
             }
             match symbol.kind {
                 SymbolKind::Text | SymbolKind::Data => {}
@@ -334,11 +344,6 @@ impl Object {
             )
             .unwrap();
         let mut write_symbol = |index: usize, symbol: &Symbol| {
-            let st_bind = match symbol.binding {
-                Binding::Unknown | Binding::Local => elf::STB_LOCAL,
-                Binding::Global => elf::STB_GLOBAL,
-                Binding::Weak => elf::STB_WEAK,
-            };
             let st_type = match symbol.kind {
                 SymbolKind::Unknown | SymbolKind::Null => elf::STT_NOTYPE,
                 SymbolKind::Text => {
@@ -361,8 +366,16 @@ impl Object {
                 SymbolKind::Tls => elf::STT_TLS,
                 SymbolKind::Label => unimplemented!(),
             };
-            // TODO: vis
-            let st_other = 0;
+            let st_bind = match symbol.binding {
+                Binding::Unknown | Binding::Local => elf::STB_LOCAL,
+                Binding::Global => elf::STB_GLOBAL,
+                Binding::Weak => elf::STB_WEAK,
+            };
+            let st_other = match symbol.visibility {
+                Visibility::Unknown | Visibility::Default => elf::STV_DEFAULT,
+                Visibility::Hidden => elf::STV_HIDDEN,
+                Visibility::Protected => elf::STV_PROTECTED,
+            };
             let st_shndx = if symbol.kind == SymbolKind::File {
                 elf::SHN_ABS as usize
             } else {

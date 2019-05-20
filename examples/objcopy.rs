@@ -79,8 +79,9 @@ fn main() {
             name: in_symbol.name().unwrap_or("").as_bytes().to_vec(),
             value: in_symbol.address(),
             size: in_symbol.size(),
-            binding: in_symbol.binding(),
             kind: in_symbol.kind(),
+            binding: in_symbol.binding(),
+            visibility: in_symbol.visibility(),
             section: in_symbol
                 .section_index()
                 .map(|s| *out_sections.get(&s).unwrap()),

@@ -1,6 +1,6 @@
 pub use object::{
     Architecture, BinaryFormat, Binding, Endianness, PointerWidth, RelocationKind, SectionKind,
-    SymbolKind,
+    SymbolKind, Visibility,
 };
 
 mod coff;
@@ -77,8 +77,9 @@ impl Object {
             name: Vec::new(),
             value: 0,
             size: 0,
-            binding: Binding::Local,
             kind: SymbolKind::Section,
+            binding: Binding::Local,
+            visibility: Visibility::Default,
             section: Some(section),
         });
         self.sections[section.0].symbol = Some(symbol);
@@ -209,12 +210,12 @@ pub struct Symbol {
     pub value: u64,
     // st_size
     pub size: u64,
-    // st_info/ST_BIND: local/global/weak
-    pub binding: Binding,
     // st_info/ST_TYPE: notype/object/func/section/file/common/tls
     pub kind: SymbolKind,
+    // st_info/ST_BIND: local/global/weak
+    pub binding: Binding,
     // st_other/ST_VISIBILITY: default/internal/hidden/protected
-    //pub vis: u8,
+    pub visibility: Visibility,
     // st_shndx
     pub section: Option<SectionId>,
 }

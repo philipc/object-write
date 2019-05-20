@@ -96,8 +96,9 @@ impl Object {
                     name,
                     value: 0,
                     size: 8,
-                    binding: Binding::Local,
                     kind: SymbolKind::Data,
+                    binding: Binding::Local,
+                    visibility: Visibility::Default,
                     section: Some(section_id),
                 });
                 refptr_symbol_ids.push(symbol_id);
