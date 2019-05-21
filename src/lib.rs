@@ -63,6 +63,14 @@ impl Object {
         }
     }
 
+    pub fn section_name(&self, kind: SectionKind, value: &[u8]) -> Vec<u8> {
+        match self.format {
+            BinaryFormat::Elf => self.elf_section_name(kind, value),
+            BinaryFormat::Coff => self.coff_section_name(kind, value),
+            _ => unimplemented!(),
+        }
+    }
+
     pub fn add_section(&mut self, section: Section) -> SectionId {
         let id = self.sections.len();
         self.sections.push(section);

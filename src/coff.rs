@@ -29,25 +29,22 @@ struct SymbolOffsets {
 }
 
 impl Object {
-    pub(crate) fn finalize_coff(&mut self) {
-        // Set the section names expected by the linker.
-        for section in &mut self.sections {
-            if section.name.is_empty() || section.name[0] != b'.' {
-                let base = match section.kind {
-                    SectionKind::Text => &b".text"[..],
-                    SectionKind::Data => &b".data"[..],
-                    SectionKind::ReadOnlyData | SectionKind::ReadOnlyString => &b".rdata"[..],
-                    _ => continue,
-                };
-                let mut name = base.to_vec();
-                if !section.name.is_empty() {
-                    name.push(b'$');
-                    name.extend(&section.name);
-                }
-                section.name = name;
-            }
+    pub(crate) fn coff_section_name(&self, kind: SectionKind, value: &[u8]) -> Vec<u8> {
+        let base = match kind {
+            SectionKind::Text => &b".text"[..],
+            SectionKind::Data => &b".data"[..],
+            SectionKind::ReadOnlyData | SectionKind::ReadOnlyString => &b".rdata"[..],
+            _ => unimplemented!(),
+        };
+        let mut name = base.to_vec();
+        if !value.is_empty() {
+            name.push(b'$');
+            name.extend(value);
         }
+        name
+    }
 
+    pub(crate) fn finalize_coff(&mut self) {
         // Determine which symbols need a refptr.
         let mut need_refptr = vec![false; self.symbols.len()];
         let mut refptr_count = 0;

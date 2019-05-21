@@ -38,29 +38,19 @@ struct SymbolOffsets {
 }
 
 impl Object {
-    pub(crate) fn finalize_elf(&mut self) {
-        self.finalize_elf_section_names();
-        self.finalize_elf_relocations();
-    }
-
-    /// Set the section names expected by the linker.
-    fn finalize_elf_section_names(&mut self) {
-        for section in &mut self.sections {
-            if section.name.is_empty() || section.name[0] != b'.' {
-                let base = match section.kind {
-                    SectionKind::Text => &b".text"[..],
-                    SectionKind::Data => &b".data"[..],
-                    SectionKind::ReadOnlyData | SectionKind::ReadOnlyString => &b".rodata"[..],
-                    _ => continue,
-                };
-                let mut name = base.to_vec();
-                if !section.name.is_empty() {
-                    name.push(b'.');
-                    name.extend(&section.name);
-                }
-                section.name = name;
-            }
+    pub(crate) fn elf_section_name(&self, kind: SectionKind, value: &[u8]) -> Vec<u8> {
+        let base = match kind {
+            SectionKind::Text => &b".text"[..],
+            SectionKind::Data => &b".data"[..],
+            SectionKind::ReadOnlyData | SectionKind::ReadOnlyString => &b".rodata"[..],
+            _ => unimplemented!(),
+        };
+        let mut name = base.to_vec();
+        if !value.is_empty() {
+            name.push(b'.');
+            name.extend(value);
         }
+        name
     }
 
     /// Use section symbols for relocations where required to avoid preemption.
@@ -69,7 +59,7 @@ impl Object {
     //     making a shared object; recompile with -fPIC
     // TODO: investigate whether the caller should be required to get this right in the first
     // place. This may depend on what is required for other object file formats.
-    fn finalize_elf_relocations(&mut self) {
+    pub(crate) fn finalize_elf(&mut self) {
         // Return true if we should use a section symbol to avoid preemption.
         fn want_section_symbol(reloc: &Relocation, symbol: &Symbol) -> bool {
             match symbol.binding {
