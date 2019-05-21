@@ -282,14 +282,14 @@ impl Object {
             let mut coff_section = coff::SectionTable {
                 name: [0; 8],
                 real_name: None,
-                virtual_size: if section.data.len() == 0 {
+                virtual_size: if section.data.is_empty() {
                     section.size as u32
                 } else {
                     0
                 },
                 virtual_address: section.address as u32,
                 size_of_raw_data: section.data.len() as u32,
-                pointer_to_raw_data: if section.data.len() == 0 {
+                pointer_to_raw_data: if section.data.is_empty() {
                     0
                 } else {
                     section_offsets[index].offset as u32
@@ -456,7 +456,7 @@ impl Object {
 
 // JamCRC
 fn checksum(data: &[u8]) -> u32 {
-    let mut hasher = crc32fast::Hasher::new_with_initial(0xffffffff);
+    let mut hasher = crc32fast::Hasher::new_with_initial(0xffff_ffff);
     hasher.update(data);
     !hasher.finalize()
 }

@@ -1,3 +1,7 @@
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::cyclomatic_complexity)]
+#![allow(clippy::module_inception)]
+
 pub use object::{
     Architecture, BinaryFormat, Binding, Endianness, PointerWidth, RelocationKind, SectionKind,
     SymbolKind, Visibility,
