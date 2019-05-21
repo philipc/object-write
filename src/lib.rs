@@ -2,10 +2,12 @@
 #![allow(clippy::cyclomatic_complexity)]
 #![allow(clippy::module_inception)]
 
-pub use object::{
-    Architecture, BinaryFormat, Binding, Endianness, PointerWidth, RelocationKind, SectionKind,
-    SymbolKind, Visibility,
-};
+// Re-export for now, until we merge with the object crate.
+pub use object::{Binding, RelocationKind, SectionKind, SymbolKind, Visibility};
+
+// target-lexicon types form part of the public API.
+pub use object::target_lexicon;
+use object::target_lexicon::{Architecture, BinaryFormat, Endianness, PointerWidth};
 
 mod coff;
 mod elf;
