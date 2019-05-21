@@ -10,8 +10,6 @@ mod util;
 #[derive(Debug)]
 pub struct Object {
     pub format: BinaryFormat,
-    pub endianness: Endianness,
-    pub pointer_width: PointerWidth,
     //encoding: Encoding,
     // e_ident
     // EI_MAG*: constant
@@ -49,16 +47,9 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn new(
-        format: BinaryFormat,
-        endianness: Endianness,
-        pointer_width: PointerWidth,
-        architecture: Architecture,
-    ) -> Object {
+    pub fn new(format: BinaryFormat, architecture: Architecture) -> Object {
         Object {
             format,
-            endianness,
-            pointer_width,
             architecture,
             entry: 0,
             sections: Vec::new(),

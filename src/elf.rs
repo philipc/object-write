@@ -145,11 +145,11 @@ impl Object {
             _ => unimplemented!(),
         };
 
-        let (container, pointer_align) = match self.pointer_width {
+        let (container, pointer_align) = match self.architecture.pointer_width().unwrap() {
             PointerWidth::U16 | PointerWidth::U32 => (goblin::container::Container::Little, 4),
             PointerWidth::U64 => (goblin::container::Container::Big, 8),
         };
-        let endian = match self.endianness {
+        let endian = match self.architecture.endianness().unwrap() {
             Endianness::Little => goblin::container::Endian::Little,
             Endianness::Big => goblin::container::Endian::Big,
         };
