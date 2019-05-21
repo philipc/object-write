@@ -235,6 +235,27 @@ impl Object {
         let symtab_index = e_shnum;
         e_shnum += 1;
 
+        // Calculate size of symtab_shndx.
+        let mut need_symtab_shndx = false;
+        for symbol in &self.symbols {
+            let index = symbol
+                .section
+                .map(|s| section_offsets[s.0].index)
+                .unwrap_or(0);
+            if index >= elf::SHN_LORESERVE as usize {
+                need_symtab_shndx = true;
+            }
+        }
+        let symtab_shndx_str_offset = shstrtab.len();
+        let symtab_shndx_offset = offset;
+        let mut symtab_shndx_len = 0;
+        if need_symtab_shndx {
+            shstrtab.extend_from_slice(&b".symtab_shndx\0"[..]);
+            symtab_shndx_len = symtab_count * 4;
+            offset += symtab_shndx_len;
+            e_shnum += 1;
+        }
+
         // Calculate size of strtab.
         let strtab_str_offset = shstrtab.len();
         shstrtab.extend_from_slice(&b".strtab\0"[..]);
@@ -292,8 +313,16 @@ impl Object {
             // TODO: other formats
             e_phnum: 0,
             e_shentsize: e_shentsize as u16,
-            e_shnum: e_shnum as u16,
-            e_shstrndx: shstrtab_index as u16,
+            e_shnum: if e_shnum >= elf::SHN_LORESERVE as usize {
+                0
+            } else {
+                e_shnum as u16
+            },
+            e_shstrndx: if shstrtab_index >= elf::SHN_LORESERVE as usize {
+                elf::SHN_XINDEX as u16
+            } else {
+                shstrtab_index as u16
+            },
         };
         header.e_ident[0..4].copy_from_slice(elf::ELFMAG);
         header.e_ident[elf::EI_CLASS] = if container.is_big() {
@@ -343,6 +372,10 @@ impl Object {
                 ctx,
             )
             .unwrap();
+        let mut symtab_shndx = Vec::new();
+        if need_symtab_shndx {
+            symtab_shndx.iowrite_with(0, ctx.le).unwrap();
+        }
         let mut write_symbol = |index: usize, symbol: &Symbol| {
             let st_type = match symbol.kind {
                 SymbolKind::Unknown | SymbolKind::Null => elf::STT_NOTYPE,
@@ -376,13 +409,27 @@ impl Object {
                 Visibility::Hidden => elf::STV_HIDDEN,
                 Visibility::Protected => elf::STV_PROTECTED,
             };
-            let st_shndx = if symbol.kind == SymbolKind::File {
-                elf::SHN_ABS as usize
-            } else {
-                symbol
-                    .section
-                    .map(|s| section_offsets[s.0].index)
-                    .unwrap_or(0)
+            let st_shndx = match symbol.kind {
+                SymbolKind::File => {
+                    if need_symtab_shndx {
+                        symtab_shndx.iowrite_with(0, ctx.le).unwrap();
+                    }
+                    elf::SHN_ABS as usize
+                }
+                _ => {
+                    let index = symbol
+                        .section
+                        .map(|s| section_offsets[s.0].index)
+                        .unwrap_or(0);
+                    if need_symtab_shndx {
+                        symtab_shndx.iowrite_with(index as u32, ctx.le).unwrap();
+                    }
+                    if index >= elf::SHN_LORESERVE as usize {
+                        elf::SHN_XINDEX as usize
+                    } else {
+                        index
+                    }
+                }
             };
             buffer
                 .iowrite_with(
@@ -407,6 +454,11 @@ impl Object {
             if symbol.binding != Binding::Unknown && symbol.binding != Binding::Local {
                 write_symbol(index, symbol);
             }
+        }
+        if need_symtab_shndx {
+            debug_assert_eq!(symtab_shndx_offset, buffer.len());
+            debug_assert_eq!(symtab_shndx_len, symtab_shndx.len());
+            buffer.extend(&symtab_shndx);
         }
 
         // Write strtab section.
@@ -482,8 +534,17 @@ impl Object {
                     sh_flags: 0,
                     sh_addr: 0,
                     sh_offset: 0,
-                    sh_size: 0,
-                    sh_link: 0,
+                    sh_size: if e_shnum >= elf::SHN_LORESERVE as usize {
+                        e_shnum as u64
+                    } else {
+                        0
+                    },
+                    sh_link: if shstrtab_index >= elf::SHN_LORESERVE as usize {
+                        shstrtab_index as u32
+                    } else {
+                        0
+                    },
+                    // TODO: e_phnum overflow
                     sh_info: 0,
                     sh_addralign: 0,
                     sh_entsize: 0,
@@ -571,6 +632,27 @@ impl Object {
                 ctx,
             )
             .unwrap();
+
+        // Write symtab_shndx section header.
+        if need_symtab_shndx {
+            buffer
+                .iowrite_with(
+                    elf::SectionHeader {
+                        sh_name: symtab_shndx_str_offset,
+                        sh_type: elf::SHT_SYMTAB_SHNDX,
+                        sh_flags: 0,
+                        sh_addr: 0,
+                        sh_offset: symtab_shndx_offset as u64,
+                        sh_size: symtab_shndx_len as u64,
+                        sh_link: strtab_index as u32,
+                        sh_info: symtab_count_local as u32,
+                        sh_addralign: pointer_align,
+                        sh_entsize: elf::Sym::size_with(&ctx) as u64,
+                    },
+                    ctx,
+                )
+                .unwrap();
+        }
 
         // Write strtab section header.
         buffer
