@@ -561,6 +561,7 @@ impl Object {
                 | SectionKind::Metadata
                 | SectionKind::Linker => 0,
             };
+            // TODO: not sure if this is correct, maybe user should determine this
             let sh_entsize = match section.kind {
                 SectionKind::ReadOnlyString | SectionKind::OtherString => 1,
                 _ => 0,
