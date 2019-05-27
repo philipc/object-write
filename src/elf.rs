@@ -38,18 +38,23 @@ struct SymbolOffsets {
 }
 
 impl Object {
-    pub(crate) fn elf_section_name(&self, kind: SectionKind, value: &[u8]) -> Vec<u8> {
-        let base = match kind {
-            SectionKind::Text => &b".text"[..],
-            SectionKind::Data => &b".data"[..],
-            SectionKind::ReadOnlyData | SectionKind::ReadOnlyString => &b".rodata"[..],
-            _ => unimplemented!(),
-        };
-        let mut name = base.to_vec();
-        if !value.is_empty() {
-            name.push(b'.');
-            name.extend(value);
+    pub(crate) fn elf_section_info(
+        &self,
+        section: StandardSection,
+    ) -> (&'static [u8], &'static [u8], SectionKind) {
+        match section {
+            StandardSection::Text => (&[], &b".text"[..], SectionKind::Text),
+            StandardSection::Data => (&[], &b".data"[..], SectionKind::Data),
+            StandardSection::ReadOnlyData | StandardSection::ReadOnlyString => {
+                (&[], &b".rodata"[..], SectionKind::ReadOnlyData)
+            }
         }
+    }
+
+    pub(crate) fn elf_subsection_name(&self, section: &[u8], value: &[u8]) -> Vec<u8> {
+        let mut name = section.to_vec();
+        name.push(b'.');
+        name.extend(value);
         name
     }
 
@@ -120,12 +125,6 @@ impl Object {
     }
 
     pub(crate) fn write_elf(&self) -> Vec<u8> {
-        // Calculate offsets of everything, and build strtab/shstrtab.
-        let mut offset = 0;
-        // TODO: avoid duplicate strings in strtab/shstrtab
-        let mut strtab = Vec::new();
-        let mut shstrtab = Vec::new();
-
         // FIXME: is_rela choice needs to match the user's section data
         let (e_machine, is_rela) = match self.architecture {
             Architecture::Arm => (elf::EM_ARM, false),
@@ -146,15 +145,20 @@ impl Object {
         let ctx = goblin::container::Ctx::new(container, endian);
         let reloc_ctx = (is_rela, ctx);
 
+        // Calculate offsets of everything, and build strtab/shstrtab.
+        let mut offset = 0;
+
         // ELF header.
         let e_ehsize = elf::Header::size_with(&ctx);
         offset += e_ehsize;
 
         // Calculate size of section data.
+        let mut shstrtab = Vec::new();
+        // Null name.
+        shstrtab.push(0);
         let mut section_offsets = vec![SectionOffsets::default(); self.sections.len()];
         // Null section.
         let mut e_shnum = 1;
-        shstrtab.push(0);
         for (index, section) in self.sections.iter().enumerate() {
             section_offsets[index].str_offset = shstrtab.len();
             shstrtab.extend_from_slice(&section.name);
@@ -187,12 +191,14 @@ impl Object {
             }
         }
 
-        // Calculate size of symbols and add symbol strings to strtab.
+        // Calculate index of symbols and add symbol strings to strtab.
+        // TODO: avoid duplicate strings in strtab/shstrtab
+        let mut strtab = Vec::new();
+        // Name for null symbol and section symbols, must come first in strtab.
+        strtab.push(0);
         let mut symbol_offsets = vec![SymbolOffsets::default(); self.symbols.len()];
         // Null symbol.
         let mut symtab_count = 1;
-        // Name for null symbol and section symbols, must come first in strtab.
-        strtab.push(0);
         let mut calc_symbol = |index: usize, symbol: &Symbol, symtab_count: &mut usize| {
             symbol_offsets[index].index = *symtab_count;
             if symbol.kind != SymbolKind::Section {
@@ -218,7 +224,7 @@ impl Object {
         // Calculate size of symtab.
         let symtab_str_offset = shstrtab.len();
         shstrtab.extend_from_slice(&b".symtab\0"[..]);
-        offset = align(offset, 8);
+        offset = align(offset, pointer_align);
         let symtab_offset = offset;
         let symtab_len = symtab_count * elf::Sym::size_with(&ctx);
         offset += symtab_len;
@@ -258,7 +264,7 @@ impl Object {
         for (index, section) in self.sections.iter().enumerate() {
             let count = section.relocations.len();
             if count != 0 {
-                offset = align(offset, 8);
+                offset = align(offset, pointer_align);
                 section_offsets[index].reloc_offset = offset;
                 let len = count * elf::Reloc::size_with(&reloc_ctx);
                 section_offsets[index].reloc_len = len;
@@ -275,7 +281,7 @@ impl Object {
         e_shnum += 1;
 
         // Calculate size of section headers.
-        offset = align(offset, 8);
+        offset = align(offset, pointer_align);
         let e_shoff = offset;
         let e_shentsize = elf::SectionHeader::size_with(&ctx);
         offset += e_shnum * e_shentsize;
@@ -347,7 +353,7 @@ impl Object {
         }
 
         // Write symbols.
-        write_align(&mut buffer, 8);
+        write_align(&mut buffer, pointer_align);
         debug_assert_eq!(symtab_offset, buffer.len());
         buffer
             .iowrite_with(
@@ -410,7 +416,7 @@ impl Object {
                     let index = symbol
                         .section
                         .map(|s| section_offsets[s.0].index)
-                        .unwrap_or(0);
+                        .unwrap_or(elf::SHN_UNDEF as usize);
                     if need_symtab_shndx {
                         symtab_shndx.iowrite_with(index as u32, ctx.le).unwrap();
                     }
@@ -458,7 +464,7 @@ impl Object {
         // Write relocations.
         for (index, section) in self.sections.iter().enumerate() {
             if !section.relocations.is_empty() {
-                write_align(&mut buffer, 8);
+                write_align(&mut buffer, pointer_align);
                 debug_assert_eq!(section_offsets[index].reloc_offset, buffer.len());
                 for reloc in &section.relocations {
                     let r_type = match self.architecture {
@@ -514,7 +520,7 @@ impl Object {
         buffer.extend(&shstrtab);
 
         // Write section headers.
-        write_align(&mut buffer, 8);
+        write_align(&mut buffer, pointer_align);
         debug_assert_eq!(e_shoff, buffer.len());
         buffer
             .iowrite_with(
@@ -557,6 +563,7 @@ impl Object {
                 SectionKind::ReadOnlyString => elf::SHF_ALLOC | elf::SHF_STRINGS | elf::SHF_MERGE,
                 SectionKind::OtherString => elf::SHF_STRINGS | elf::SHF_MERGE,
                 SectionKind::Other
+                | SectionKind::Debug
                 | SectionKind::Unknown
                 | SectionKind::Metadata
                 | SectionKind::Linker => 0,
@@ -596,7 +603,7 @@ impl Object {
                             sh_size: section_offsets[index].reloc_len as u64,
                             sh_link: symtab_index as u32,
                             sh_info: section_offsets[index].index as u32,
-                            sh_addralign: pointer_align,
+                            sh_addralign: pointer_align as u64,
                             sh_entsize: elf::Reloc::size_with(&reloc_ctx) as u64,
                         },
                         ctx,
@@ -617,7 +624,7 @@ impl Object {
                     sh_size: symtab_len as u64,
                     sh_link: strtab_index as u32,
                     sh_info: symtab_count_local as u32,
-                    sh_addralign: pointer_align,
+                    sh_addralign: pointer_align as u64,
                     sh_entsize: elf::Sym::size_with(&ctx) as u64,
                 },
                 ctx,
@@ -637,7 +644,7 @@ impl Object {
                         sh_size: symtab_shndx_len as u64,
                         sh_link: strtab_index as u32,
                         sh_info: symtab_count_local as u32,
-                        sh_addralign: pointer_align,
+                        sh_addralign: pointer_align as u64,
                         sh_entsize: elf::Sym::size_with(&ctx) as u64,
                     },
                     ctx,

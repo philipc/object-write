@@ -2,8 +2,10 @@
 #![allow(clippy::cyclomatic_complexity)]
 #![allow(clippy::module_inception)]
 
+use std::collections::HashMap;
+
 // Re-export for now, until we merge with the object crate.
-pub use object::{Binding, RelocationKind, SectionKind, SymbolKind, Visibility};
+pub use object::{Binding, InstructionKind, RelocationKind, SectionKind, SymbolKind, Visibility};
 
 // target-lexicon types form part of the public API.
 pub use object::target_lexicon;
@@ -11,6 +13,7 @@ use object::target_lexicon::{Architecture, BinaryFormat, Endianness, PointerWidt
 
 mod coff;
 mod elf;
+mod macho;
 mod util;
 
 #[derive(Debug)]
@@ -40,6 +43,8 @@ pub struct Object {
     // e_shentsize: constant
     // e_shnum
     pub sections: Vec<Section>,
+    // FIXME
+    //pub section_symbols: Vec<SymbolId>,
     // e_shstrndx: calculated (or maybe preserve?)
 
     // derived:
@@ -50,6 +55,8 @@ pub struct Object {
     // TODO: PT_INTERP
     // TODO: PT_NOTE
     // TODO: .note.GNU-stack
+    pub standard_sections: HashMap<StandardSection, SectionId>,
+    pub subsection_via_symbols: bool,
 }
 
 impl Object {
@@ -60,13 +67,69 @@ impl Object {
             entry: 0,
             sections: Vec::new(),
             symbols: Vec::new(),
+            standard_sections: HashMap::new(),
+            subsection_via_symbols: false,
         }
     }
 
-    pub fn section_name(&self, kind: SectionKind, value: &[u8]) -> Vec<u8> {
+    pub fn segment_name(&self, segment: StandardSegment) -> &'static [u8] {
         match self.format {
-            BinaryFormat::Elf => self.elf_section_name(kind, value),
-            BinaryFormat::Coff => self.coff_section_name(kind, value),
+            BinaryFormat::Elf | BinaryFormat::Coff => &[],
+            BinaryFormat::Macho => self.macho_segment_name(segment),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn section_id(&mut self, section: StandardSection) -> SectionId {
+        self.standard_sections
+            .get(&section)
+            .cloned()
+            .unwrap_or_else(|| {
+                let (segment, name, kind) = self.section_info(section);
+                let new_section =
+                    Section::new(segment.to_vec(), name.to_vec(), kind, Vec::new(), 1);
+                let section_id = self.add_section(new_section);
+                self.standard_sections.insert(section, section_id);
+                section_id
+            })
+    }
+
+    /// Returns the standard segment and section names for the given section.
+    pub fn section_info(
+        &self,
+        section: StandardSection,
+    ) -> (&'static [u8], &'static [u8], SectionKind) {
+        match self.format {
+            BinaryFormat::Elf => self.elf_section_info(section),
+            BinaryFormat::Coff => self.coff_section_info(section),
+            BinaryFormat::Macho => self.macho_section_info(section),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn subsection_info(
+        &self,
+        section: StandardSection,
+        value: &[u8],
+    ) -> (&'static [u8], Vec<u8>, SectionKind) {
+        let (segment, section, kind) = self.section_info(section);
+        let name = self.subsection_name(section, value);
+        (segment, name, kind)
+    }
+
+    pub fn subsection_name(&self, section: &[u8], value: &[u8]) -> Vec<u8> {
+        debug_assert!(!self.has_subsection_via_symbols());
+        match self.format {
+            BinaryFormat::Elf => self.elf_subsection_name(section, value),
+            BinaryFormat::Coff => self.coff_subsection_name(section, value),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn has_subsection_via_symbols(&self) -> bool {
+        match self.format {
+            BinaryFormat::Elf | BinaryFormat::Coff => false,
+            BinaryFormat::Macho => true,
             _ => unimplemented!(),
         }
     }
@@ -74,21 +137,28 @@ impl Object {
     pub fn add_section(&mut self, section: Section) -> SectionId {
         let id = self.sections.len();
         self.sections.push(section);
+        // TODO: do we need to add to standard_sections too?
+        // TODO: always add a section symbol too?
         SectionId(id)
     }
 
     pub fn add_section_symbol(&mut self, section: SectionId) -> SymbolId {
-        let symbol = self.add_symbol(Symbol {
-            name: Vec::new(),
-            value: 0,
-            size: 0,
-            kind: SymbolKind::Section,
-            binding: Binding::Local,
-            visibility: Visibility::Default,
-            section: Some(section),
-        });
-        self.sections[section.0].symbol = Some(symbol);
-        symbol
+        match self.sections[section.0].symbol {
+            Some(symbol) => symbol,
+            None => {
+                let symbol = self.add_symbol(Symbol {
+                    name: Vec::new(),
+                    value: 0,
+                    size: 0,
+                    kind: SymbolKind::Section,
+                    binding: Binding::Local,
+                    visibility: Visibility::Default,
+                    section: Some(section),
+                });
+                self.sections[section.0].symbol = Some(symbol);
+                symbol
+            }
+        }
     }
 
     /// Append data to an existing section. Returns of the section offset of the data.
@@ -109,6 +179,28 @@ impl Object {
         offset as u64
     }
 
+    /// Add a subsection. Returns the section id and section offset of the data.
+    pub fn add_subsection(
+        &mut self,
+        section: StandardSection,
+        name: &[u8],
+        data: &[u8],
+        align: u64,
+    ) -> (SectionId, u64) {
+        if self.has_subsection_via_symbols() {
+            self.subsection_via_symbols = true;
+            let section_id = self.section_id(section);
+            let offset = self.append_section_data(section_id, data, align);
+            println!("name: {} offset: {}", String::from_utf8_lossy(name), offset);
+            (section_id, offset)
+        } else {
+            let (segment, name, kind) = self.subsection_info(section, name);
+            let section = Section::new(segment.to_vec(), name, kind, data.to_vec(), align);
+            let section_id = self.add_section(section);
+            (section_id, 0)
+        }
+    }
+
     pub fn add_symbol(&mut self, symbol: Symbol) -> SymbolId {
         let id = self.symbols.len();
         self.symbols.push(symbol);
@@ -119,6 +211,7 @@ impl Object {
         match self.format {
             BinaryFormat::Elf => self.finalize_elf(),
             BinaryFormat::Coff => self.finalize_coff(),
+            BinaryFormat::Macho => self.finalize_macho(),
             _ => unimplemented!(),
         }
     }
@@ -127,6 +220,7 @@ impl Object {
         match self.format {
             BinaryFormat::Elf => self.write_elf(),
             BinaryFormat::Coff => self.write_coff(),
+            BinaryFormat::Macho => self.write_macho(),
             _ => unimplemented!(),
         }
     }
@@ -157,24 +251,50 @@ pub struct Segment {
 */
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StandardSegment {
+    Text,
+    Data,
+    Debug,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StandardSection {
+    Text,
+    Data,
+    ReadOnlyData,
+    ReadOnlyString,
+}
+
+impl StandardSection {
+    pub fn kind(self) -> SectionKind {
+        match self {
+            StandardSection::Text => SectionKind::Text,
+            StandardSection::Data => SectionKind::Data,
+            StandardSection::ReadOnlyData => SectionKind::ReadOnlyData,
+            StandardSection::ReadOnlyString => SectionKind::ReadOnlyString,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SectionId(pub usize);
 
 #[derive(Debug)]
 pub struct Section {
+    // Mach-O
+    pub segment: Vec<u8>,
     // sh_name
     pub name: Vec<u8>,
-    // Mach-O
-    pub segment_name: Vec<u8>,
     // sh_type: constant
     // sh_flags
+    // TODO: probably need extra format-specific flags
     pub kind: SectionKind,
     // sh_addr
+    // TODO: don't use this for object files?
     pub address: u64,
     // sh_offset: calculated
     // sh_size
     pub size: u64,
-    // TODO: sh_link
-    // TODO: sh_info
     // sh_addralign
     pub align: u64,
     // sh_entsize: constant
@@ -189,10 +309,16 @@ pub struct Section {
 }
 
 impl Section {
-    pub fn new(name: Vec<u8>, kind: SectionKind, data: Vec<u8>, align: u64) -> Self {
+    pub fn new(
+        segment: Vec<u8>,
+        name: Vec<u8>,
+        kind: SectionKind,
+        data: Vec<u8>,
+        align: u64,
+    ) -> Self {
         Section {
+            segment,
             name,
-            segment_name: Vec::new(),
             kind,
             address: 0,
             size: data.len() as u64,
@@ -221,6 +347,8 @@ pub struct Symbol {
     pub binding: Binding,
     // st_other/ST_VISIBILITY: default/internal/hidden/protected
     pub visibility: Visibility,
+    // TODO: translation/linkage/global
+    // pub scope: Scope,
     // st_shndx
     pub section: Option<SectionId>,
 }
@@ -233,6 +361,7 @@ pub struct Relocation {
     pub symbol: SymbolId,
     // r_info/R_TYPE
     pub kind: RelocationKind,
+    pub instruction: InstructionKind,
     // r_info/R_TYPE
     pub size: u8,
     // r_addend

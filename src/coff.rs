@@ -29,18 +29,23 @@ struct SymbolOffsets {
 }
 
 impl Object {
-    pub(crate) fn coff_section_name(&self, kind: SectionKind, value: &[u8]) -> Vec<u8> {
-        let base = match kind {
-            SectionKind::Text => &b".text"[..],
-            SectionKind::Data => &b".data"[..],
-            SectionKind::ReadOnlyData | SectionKind::ReadOnlyString => &b".rdata"[..],
-            _ => unimplemented!(),
-        };
-        let mut name = base.to_vec();
-        if !value.is_empty() {
-            name.push(b'$');
-            name.extend(value);
+    pub(crate) fn coff_section_info(
+        &self,
+        section: StandardSection,
+    ) -> (&'static [u8], &'static [u8], SectionKind) {
+        match section {
+            StandardSection::Text => (&[], &b".text"[..], SectionKind::Text),
+            StandardSection::Data => (&[], &b".data"[..], SectionKind::Data),
+            StandardSection::ReadOnlyData | StandardSection::ReadOnlyString => {
+                (&[], &b".rdata"[..], SectionKind::ReadOnlyData)
+            }
         }
+    }
+
+    pub(crate) fn coff_subsection_name(&self, section: &[u8], value: &[u8]) -> Vec<u8> {
+        let mut name = section.to_vec();
+        name.push(b'$');
+        name.extend(value);
         name
     }
 
@@ -69,7 +74,7 @@ impl Object {
                 name.extend(&symbol.name);
                 refptr_sections.push(Section {
                     name,
-                    segment_name: Vec::new(),
+                    segment: Vec::new(),
                     kind: SectionKind::ReadOnlyData,
                     address: 0,
                     // TODO: pointer size
@@ -80,6 +85,7 @@ impl Object {
                         offset: 0,
                         symbol: SymbolId(index),
                         kind: RelocationKind::Absolute,
+                        instruction: InstructionKind::Any,
                         // TODO: pointer size
                         size: 64,
                         addend: 0,
@@ -248,7 +254,7 @@ impl Object {
                 SectionKind::ReadOnlyData | SectionKind::ReadOnlyString => {
                     coff::IMAGE_SCN_CNT_INITIALIZED_DATA | coff::IMAGE_SCN_MEM_READ
                 }
-                SectionKind::Other | SectionKind::OtherString => {
+                SectionKind::Debug | SectionKind::Other | SectionKind::OtherString => {
                     coff::IMAGE_SCN_CNT_INITIALIZED_DATA
                         | coff::IMAGE_SCN_MEM_READ
                         | coff::IMAGE_SCN_MEM_DISCARDABLE

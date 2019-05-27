@@ -39,6 +39,7 @@ fn main() {
 
     let mut out_object = write::Object::new(in_object.format(), in_object.architecture());
     out_object.entry = in_object.entry();
+    // FIXME: MH_SUBSECTIONS_VIA_SYMBOLS
 
     let mut out_sections = HashMap::new();
     for in_section in in_object.sections() {
@@ -52,7 +53,7 @@ fn main() {
         }
         let out_section = write::Section {
             name: in_section.name().unwrap_or("").as_bytes().to_vec(),
-            segment_name: in_section.segment_name().unwrap_or("").as_bytes().to_vec(),
+            segment: in_section.segment_name().unwrap_or("").as_bytes().to_vec(),
             kind: in_section.kind(),
             address: in_section.address(),
             size: size,
@@ -96,6 +97,7 @@ fn main() {
                 offset,
                 symbol: *out_symbols.get(&in_relocation.symbol().0).unwrap(),
                 kind: in_relocation.kind(),
+                instruction: in_relocation.instruction_kind(),
                 size: in_relocation.size(),
                 addend: in_relocation.addend(),
             };
