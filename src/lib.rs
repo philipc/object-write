@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 // Re-export for now, until we merge with the object crate.
-pub use object::{Binding, InstructionKind, RelocationKind, SectionKind, SymbolKind, Visibility};
+pub use object::{Binding, RelocationKind, RelocationSubkind, SectionKind, SymbolKind, Visibility};
 
 // target-lexicon types form part of the public API.
 pub use object::target_lexicon;
@@ -361,7 +361,7 @@ pub struct Relocation {
     pub symbol: SymbolId,
     // r_info/R_TYPE
     pub kind: RelocationKind,
-    pub instruction: InstructionKind,
+    pub subkind: RelocationSubkind,
     // r_info/R_TYPE
     pub size: u8,
     // r_addend

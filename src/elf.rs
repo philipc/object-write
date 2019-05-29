@@ -482,19 +482,25 @@ impl Object {
                             (RelocationKind::Other(x), _) => x,
                             _ => unimplemented!("{:?}", reloc),
                         },
-                        Architecture::X86_64 => match (reloc.kind, reloc.size) {
-                            (RelocationKind::Absolute, 64) => elf::R_X86_64_64,
-                            (RelocationKind::Relative, 32) => elf::R_X86_64_PC32,
-                            (RelocationKind::Got, 32) => elf::R_X86_64_GOT32,
-                            (RelocationKind::PltRelative, 32) => elf::R_X86_64_PLT32,
-                            (RelocationKind::GotRelative, 32) => elf::R_X86_64_GOTPCREL,
-                            (RelocationKind::Absolute, 32) => elf::R_X86_64_32,
-                            (RelocationKind::AbsoluteSigned, 32) => elf::R_X86_64_32S,
-                            (RelocationKind::Absolute, 16) => elf::R_X86_64_16,
-                            (RelocationKind::Relative, 16) => elf::R_X86_64_PC16,
-                            (RelocationKind::Absolute, 8) => elf::R_X86_64_8,
-                            (RelocationKind::Relative, 8) => elf::R_X86_64_PC8,
-                            (RelocationKind::Other(x), _) => x,
+                        Architecture::X86_64 => match (reloc.kind, reloc.subkind, reloc.size) {
+                            (RelocationKind::Absolute, RelocationSubkind::Default, 64) => {
+                                elf::R_X86_64_64
+                            }
+                            (RelocationKind::Relative, _, 32) => elf::R_X86_64_PC32,
+                            (RelocationKind::Got, _, 32) => elf::R_X86_64_GOT32,
+                            (RelocationKind::PltRelative, _, 32) => elf::R_X86_64_PLT32,
+                            (RelocationKind::GotRelative, _, 32) => elf::R_X86_64_GOTPCREL,
+                            (RelocationKind::Absolute, RelocationSubkind::Default, 32) => {
+                                elf::R_X86_64_32
+                            }
+                            (RelocationKind::Absolute, RelocationSubkind::X86Signed, 32) => {
+                                elf::R_X86_64_32S
+                            }
+                            (RelocationKind::Absolute, _, 16) => elf::R_X86_64_16,
+                            (RelocationKind::Relative, _, 16) => elf::R_X86_64_PC16,
+                            (RelocationKind::Absolute, _, 8) => elf::R_X86_64_8,
+                            (RelocationKind::Relative, _, 8) => elf::R_X86_64_PC8,
+                            (RelocationKind::Other(x), _, _) => x,
                             _ => unimplemented!("{:?}", reloc),
                         },
                         _ => unimplemented!(),

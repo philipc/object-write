@@ -365,18 +365,25 @@ impl Object {
                             RelocationKind::Absolute => (0, mach::GENERIC_RELOC_VANILLA),
                             _ => unimplemented!("{:?}", reloc),
                         },
-                        Architecture::X86_64 => match (reloc.kind, reloc.instruction, reloc.addend)
-                        {
-                            (RelocationKind::Absolute, _, 0) => (0, mach::X86_64_RELOC_UNSIGNED),
-                            (RelocationKind::Relative, InstructionKind::Branch, -4) => {
+                        Architecture::X86_64 => match (reloc.kind, reloc.subkind, reloc.addend) {
+                            (RelocationKind::Absolute, RelocationSubkind::Default, 0) => {
+                                (0, mach::X86_64_RELOC_UNSIGNED)
+                            }
+                            (RelocationKind::Relative, RelocationSubkind::X86RipRelative, -4) => {
+                                (1, mach::X86_64_RELOC_SIGNED)
+                            }
+                            (RelocationKind::Relative, RelocationSubkind::X86Branch, -4) => {
                                 (1, mach::X86_64_RELOC_BRANCH)
                             }
-                            (RelocationKind::Relative, _, -4) => (1, mach::X86_64_RELOC_SIGNED),
-                            (RelocationKind::PltRelative, _, -4) => (1, mach::X86_64_RELOC_BRANCH),
-                            (RelocationKind::GotRelative, InstructionKind::Load, -4) => {
-                                (1, mach::X86_64_RELOC_GOT_LOAD)
+                            (RelocationKind::PltRelative, RelocationSubkind::X86Branch, -4) => {
+                                (1, mach::X86_64_RELOC_BRANCH)
                             }
-                            (RelocationKind::GotRelative, InstructionKind::Any, -4) => {
+                            (
+                                RelocationKind::GotRelative,
+                                RelocationSubkind::X86RipRelativeMovq,
+                                -4,
+                            ) => (1, mach::X86_64_RELOC_GOT_LOAD),
+                            (RelocationKind::GotRelative, RelocationSubkind::Default, -4) => {
                                 (1, mach::X86_64_RELOC_GOT)
                             }
                             _ => unimplemented!("{:?}", reloc),

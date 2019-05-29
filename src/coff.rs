@@ -85,7 +85,7 @@ impl Object {
                         offset: 0,
                         symbol: SymbolId(index),
                         kind: RelocationKind::Absolute,
-                        instruction: InstructionKind::Any,
+                        subkind: RelocationSubkind::Default,
                         // TODO: pointer size
                         size: 64,
                         addend: 0,
