@@ -33,7 +33,7 @@ impl Object {
         match segment {
             StandardSegment::Text => &b"__TEXT"[..],
             StandardSegment::Data => &b"__DATA"[..],
-            StandardSegment::Debug => &b"__DEBUG"[..],
+            StandardSegment::Debug => &b"__DWARF"[..],
         }
     }
 
