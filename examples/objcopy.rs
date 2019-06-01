@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::{env, fs, process};
 
-use object::{Object, ObjectSection, SectionKind, SymbolKind};
+use object::{Object, ObjectSection, RelocationTarget, SectionKind, SymbolKind};
 use object_write as write;
 
 fn main() {
@@ -83,25 +83,32 @@ fn main() {
                 .map(|s| *out_sections.get(&s).unwrap()),
         };
         let symbol_id = out_object.add_symbol(out_symbol);
-        out_symbols.insert(symbol_index.0, symbol_id);
+        out_symbols.insert(symbol_index, symbol_id);
     }
 
     for in_section in in_object.sections() {
         if in_section.kind() == SectionKind::Metadata {
             continue;
         }
-        let out_section =
-            &mut out_object.sections[out_sections.get(&in_section.index()).unwrap().0];
+        let out_section = out_sections.get(&in_section.index()).unwrap();
         for (offset, in_relocation) in in_section.relocations() {
+            let symbol = match in_relocation.target() {
+                RelocationTarget::Symbol(symbol) => *out_symbols.get(&symbol).unwrap(),
+                RelocationTarget::Section(section) => {
+                    out_object.add_section_symbol(*out_sections.get(&section).unwrap())
+                }
+            };
             let out_relocation = write::Relocation {
                 offset,
-                symbol: *out_symbols.get(&in_relocation.symbol().0).unwrap(),
+                symbol,
                 kind: in_relocation.kind(),
-                instruction: in_relocation.instruction_kind(),
+                subkind: in_relocation.subkind(),
                 size: in_relocation.size(),
                 addend: in_relocation.addend(),
             };
-            out_section.relocations.push(out_relocation);
+            out_object.sections[out_section.0]
+                .relocations
+                .push(out_relocation);
         }
     }
 

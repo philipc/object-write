@@ -142,25 +142,6 @@ impl Object {
         SectionId(id)
     }
 
-    pub fn add_section_symbol(&mut self, section: SectionId) -> SymbolId {
-        match self.sections[section.0].symbol {
-            Some(symbol) => symbol,
-            None => {
-                let symbol = self.add_symbol(Symbol {
-                    name: Vec::new(),
-                    value: 0,
-                    size: 0,
-                    kind: SymbolKind::Section,
-                    binding: Binding::Local,
-                    visibility: Visibility::Default,
-                    section: Some(section),
-                });
-                self.sections[section.0].symbol = Some(symbol);
-                symbol
-            }
-        }
-    }
-
     /// Append data to an existing section. Returns of the section offset of the data.
     pub fn append_section_data(&mut self, section: SectionId, data: &[u8], align: u64) -> u64 {
         debug_assert_eq!(align & (align - 1), 0);
@@ -202,9 +183,32 @@ impl Object {
     }
 
     pub fn add_symbol(&mut self, symbol: Symbol) -> SymbolId {
-        let id = self.symbols.len();
+        if symbol.kind == SymbolKind::Section {
+            return self.add_section_symbol(symbol.section.unwrap());
+        }
+        let symbol_id = SymbolId(self.symbols.len());
         self.symbols.push(symbol);
-        SymbolId(id)
+        symbol_id
+    }
+
+    pub fn add_section_symbol(&mut self, section: SectionId) -> SymbolId {
+        match self.sections[section.0].symbol {
+            Some(symbol_id) => symbol_id,
+            None => {
+                let symbol_id = SymbolId(self.symbols.len());
+                self.symbols.push(Symbol {
+                    name: Vec::new(),
+                    value: 0,
+                    size: 0,
+                    kind: SymbolKind::Section,
+                    binding: Binding::Local,
+                    visibility: Visibility::Default,
+                    section: Some(section),
+                });
+                self.sections[section.0].symbol = Some(symbol_id);
+                symbol_id
+            }
+        }
     }
 
     pub fn finalize(&mut self) {
