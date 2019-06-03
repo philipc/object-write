@@ -50,20 +50,29 @@ impl Object {
     }
 
     pub(crate) fn coff_fixup_relocation(&mut self, mut relocation: &mut Relocation) -> i64 {
+        if relocation.kind == RelocationKind::GotRelative {
+            // Use a stub symbol for the relocation instead.
+            // This isn't really a GOT, but it's a similar purpose.
+            // TODO: need to handle DLL imports differently?
+            relocation.kind = RelocationKind::Relative;
+            relocation.symbol = self.coff_add_stub_symbol(relocation.symbol);
+        } else if relocation.kind == RelocationKind::PltRelative {
+            // Windows doesn't need a separate relocation type for
+            // references to functions in import libraries.
+            // For convenience, treat this the same as Relative.
+            relocation.kind = RelocationKind::Relative;
+        }
+
         let constant = match self.architecture {
             Architecture::I386 => match relocation.kind {
-                RelocationKind::Relative
-                | RelocationKind::GotRelative
-                | RelocationKind::PltRelative => {
+                RelocationKind::Relative => {
                     // IMAGE_REL_I386_REL32
                     relocation.addend + 4
                 }
                 _ => relocation.addend,
             },
             Architecture::X86_64 => match relocation.kind {
-                RelocationKind::Relative
-                | RelocationKind::GotRelative
-                | RelocationKind::PltRelative => {
+                RelocationKind::Relative => {
                     // IMAGE_REL_AMD64_REL32 through to IMAGE_REL_AMD64_REL32_5
                     if relocation.addend >= -4 && relocation.addend <= -9 {
                         0
@@ -79,87 +88,49 @@ impl Object {
         constant
     }
 
-    pub(crate) fn coff_finalize(&mut self) {
-        // Determine which symbols need a refptr.
-        let mut need_refptr = vec![false; self.symbols.len()];
-        let mut refptr_count = 0;
-        for section in &self.sections {
-            for reloc in &section.relocations {
-                if reloc.kind == RelocationKind::GotRelative {
-                    if !need_refptr[reloc.symbol.0] {
-                        need_refptr[reloc.symbol.0] = true;
-                        refptr_count += 1;
-                    }
-                }
-            }
+    fn coff_add_stub_symbol(&mut self, symbol_id: SymbolId) -> SymbolId {
+        if let Some(stub_id) = self.stub_symbols.get(&symbol_id) {
+            return *stub_id;
         }
-        // Create the refptr sections and symbols.
-        let mut refptr_sections = Vec::with_capacity(refptr_count);
-        let mut refptr_symbols = Vec::with_capacity(refptr_count);
-        let mut refptr_symbol_ids = Vec::with_capacity(self.symbols.len());
-        for (index, symbol) in self.symbols.iter().enumerate() {
-            if need_refptr[index] {
-                let section_id = SectionId(self.sections.len() + refptr_sections.len());
-                let mut name = b".rdata$.refptr.".to_vec();
-                name.extend(&symbol.name);
-                refptr_sections.push(Section {
-                    name,
-                    segment: Vec::new(),
-                    kind: SectionKind::ReadOnlyData,
-                    address: 0,
-                    // TODO: pointer size
-                    size: 8,
-                    align: 8,
-                    data: vec![0; 8],
-                    relocations: vec![Relocation {
-                        offset: 0,
-                        symbol: SymbolId(index),
-                        kind: RelocationKind::Absolute,
-                        subkind: RelocationSubkind::Default,
-                        // TODO: pointer size
-                        size: 64,
-                        addend: 0,
-                    }],
-                    symbol: None,
-                });
-                let symbol_id = SymbolId(self.symbols.len() + refptr_symbols.len());
-                let mut name = b".refptr.".to_vec();
-                name.extend(&symbol.name);
-                refptr_symbols.push(Symbol {
-                    name,
-                    value: 0,
-                    size: 8,
-                    kind: SymbolKind::Data,
-                    binding: Binding::Local,
-                    visibility: Visibility::Default,
-                    section: Some(section_id),
-                });
-                refptr_symbol_ids.push(symbol_id);
-            } else {
-                // Placeholder.
-                refptr_symbol_ids.push(SymbolId(index));
-            }
-        }
-        // Fix the relocations to use the refptr.
-        for section in &mut self.sections {
-            for reloc in &mut section.relocations {
-                match reloc.kind {
-                    RelocationKind::GotRelative => {
-                        reloc.kind = RelocationKind::Relative;
-                        reloc.symbol = refptr_symbol_ids[reloc.symbol.0];
-                    }
-                    RelocationKind::PltRelative => {
-                        // Windows doesn't need a separate relocation type for
-                        // references to functions in import libraries.
-                        // For convenience, treat this the same as Relative.
-                        reloc.kind = RelocationKind::Relative;
-                    }
-                    _ => {}
-                }
-            }
-        }
-        self.sections.extend(refptr_sections);
-        self.symbols.extend(refptr_symbols);
+
+        let mut name = b".rdata$.refptr.".to_vec();
+        name.extend(&self.symbols[symbol_id.0].name);
+        let section_id = self.add_section(Section {
+            name,
+            segment: Vec::new(),
+            kind: SectionKind::ReadOnlyData,
+            address: 0,
+            // TODO: pointer size
+            size: 8,
+            align: 8,
+            data: vec![0; 8],
+            relocations: vec![Relocation {
+                offset: 0,
+                symbol: symbol_id,
+                kind: RelocationKind::Absolute,
+                subkind: RelocationSubkind::Default,
+                // TODO: pointer size
+                size: 64,
+                addend: 0,
+            }],
+            symbol: None,
+        });
+
+        let mut name = b".refptr.".to_vec();
+        name.extend(&self.symbols[symbol_id.0].name);
+        let stub_id = self.add_symbol(Symbol {
+            name,
+            value: 0,
+            // TODO: pointer size
+            size: 8,
+            kind: SymbolKind::Data,
+            binding: Binding::Local,
+            visibility: Visibility::Default,
+            section: Some(section_id),
+        });
+        self.stub_symbols.insert(symbol_id, stub_id);
+
+        stub_id
     }
 
     pub(crate) fn coff_write(&self) -> Vec<u8> {

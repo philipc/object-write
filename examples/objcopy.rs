@@ -112,7 +112,6 @@ fn main() {
         }
     }
 
-    out_object.finalize();
     let out_data = out_object.write();
     if let Err(err) = fs::write(&out_file_path, out_data) {
         eprintln!("Failed to write file '{}': {}", out_file_path, err);

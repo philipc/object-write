@@ -56,6 +56,7 @@ pub struct Object {
     // TODO: PT_NOTE
     // TODO: .note.GNU-stack
     pub standard_sections: HashMap<StandardSection, SectionId>,
+    pub stub_symbols: HashMap<SymbolId, SymbolId>,
     pub subsection_via_symbols: bool,
 }
 
@@ -68,6 +69,7 @@ impl Object {
             sections: Vec::new(),
             symbols: Vec::new(),
             standard_sections: HashMap::new(),
+            stub_symbols: HashMap::new(),
             subsection_via_symbols: false,
         }
     }
@@ -212,6 +214,8 @@ impl Object {
     }
 
     /// Add a relocation to a section.
+    ///
+    /// Relocations must only be added after all symbols have been added and defined.
     pub fn add_relocation(&mut self, section: SectionId, mut relocation: Relocation) {
         let constant = match self.format {
             BinaryFormat::Elf => self.elf_fixup_relocation(&mut relocation),
@@ -224,15 +228,6 @@ impl Object {
             unimplemented!();
         }
         self.sections[section.0].relocations.push(relocation);
-    }
-
-    pub fn finalize(&mut self) {
-        match self.format {
-            BinaryFormat::Elf => {}
-            BinaryFormat::Coff => self.coff_finalize(),
-            BinaryFormat::Macho => {}
-            _ => unimplemented!(),
-        }
     }
 
     pub fn write(&self) -> Vec<u8> {
