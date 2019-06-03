@@ -211,20 +211,35 @@ impl Object {
         }
     }
 
+    /// Add a relocation to a section.
+    pub fn add_relocation(&mut self, section: SectionId, mut relocation: Relocation) {
+        let constant = match self.format {
+            BinaryFormat::Elf => self.elf_fixup_relocation(&mut relocation),
+            BinaryFormat::Coff => self.coff_fixup_relocation(&mut relocation),
+            BinaryFormat::Macho => self.macho_fixup_relocation(&mut relocation),
+            _ => unimplemented!(),
+        };
+        if constant != 0 {
+            // TODO: write to the section data.
+            unimplemented!();
+        }
+        self.sections[section.0].relocations.push(relocation);
+    }
+
     pub fn finalize(&mut self) {
         match self.format {
-            BinaryFormat::Elf => self.finalize_elf(),
-            BinaryFormat::Coff => self.finalize_coff(),
-            BinaryFormat::Macho => self.finalize_macho(),
+            BinaryFormat::Elf => {}
+            BinaryFormat::Coff => self.coff_finalize(),
+            BinaryFormat::Macho => {}
             _ => unimplemented!(),
         }
     }
 
     pub fn write(&self) -> Vec<u8> {
         match self.format {
-            BinaryFormat::Elf => self.write_elf(),
-            BinaryFormat::Coff => self.write_coff(),
-            BinaryFormat::Macho => self.write_macho(),
+            BinaryFormat::Elf => self.elf_write(),
+            BinaryFormat::Coff => self.coff_write(),
+            BinaryFormat::Macho => self.macho_write(),
             _ => unimplemented!(),
         }
     }

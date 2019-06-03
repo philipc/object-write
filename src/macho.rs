@@ -55,9 +55,18 @@ impl Object {
         }
     }
 
-    pub(crate) fn finalize_macho(&mut self) {}
+    pub(crate) fn macho_fixup_relocation(&mut self, mut relocation: &mut Relocation) -> i64 {
+        let constant = match relocation.kind {
+            RelocationKind::Relative
+            | RelocationKind::GotRelative
+            | RelocationKind::PltRelative => relocation.addend + 4,
+            _ => relocation.addend,
+        };
+        relocation.addend -= constant;
+        constant
+    }
 
-    pub(crate) fn write_macho(&self) -> Vec<u8> {
+    pub(crate) fn macho_write(&self) -> Vec<u8> {
         let endian = match self.architecture.endianness().unwrap() {
             Endianness::Little => goblin::container::Endian::Little,
             Endianness::Big => goblin::container::Endian::Big,

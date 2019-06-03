@@ -49,7 +49,37 @@ impl Object {
         name
     }
 
-    pub(crate) fn finalize_coff(&mut self) {
+    pub(crate) fn coff_fixup_relocation(&mut self, mut relocation: &mut Relocation) -> i64 {
+        let constant = match self.architecture {
+            Architecture::I386 => match relocation.kind {
+                RelocationKind::Relative
+                | RelocationKind::GotRelative
+                | RelocationKind::PltRelative => {
+                    // IMAGE_REL_I386_REL32
+                    relocation.addend + 4
+                }
+                _ => relocation.addend,
+            },
+            Architecture::X86_64 => match relocation.kind {
+                RelocationKind::Relative
+                | RelocationKind::GotRelative
+                | RelocationKind::PltRelative => {
+                    // IMAGE_REL_AMD64_REL32 through to IMAGE_REL_AMD64_REL32_5
+                    if relocation.addend >= -4 && relocation.addend <= -9 {
+                        0
+                    } else {
+                        relocation.addend + 4
+                    }
+                }
+                _ => relocation.addend,
+            },
+            _ => unimplemented!(),
+        };
+        relocation.addend -= constant;
+        constant
+    }
+
+    pub(crate) fn coff_finalize(&mut self) {
         // Determine which symbols need a refptr.
         let mut need_refptr = vec![false; self.symbols.len()];
         let mut refptr_count = 0;
@@ -132,7 +162,7 @@ impl Object {
         self.symbols.extend(refptr_symbols);
     }
 
-    pub(crate) fn write_coff(&self) -> Vec<u8> {
+    pub(crate) fn coff_write(&self) -> Vec<u8> {
         // Calculate offsets of everything, and build strtab.
         let mut offset = 0;
         // First 4 bytes of strtab are the length.

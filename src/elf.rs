@@ -58,15 +58,19 @@ impl Object {
         name
     }
 
-    /// Use section symbols for relocations where required to avoid preemption.
-    // Otherwise, the linker will fail with:
-    //     relocation R_X86_64_PC32 against symbol `SomeSymbolName' can not be used when
-    //     making a shared object; recompile with -fPIC
-    // TODO: investigate whether the caller should be required to get this right in the first
-    // place. This may depend on what is required for other object file formats.
-    pub(crate) fn finalize_elf(&mut self) {
+    fn elf_has_relocation_addend(&self) -> bool {
+        match self.architecture {
+            Architecture::Arm => false,
+            Architecture::Aarch64 => false,
+            Architecture::I386 => false,
+            Architecture::X86_64 => true,
+            _ => unimplemented!(),
+        }
+    }
+
+    pub(crate) fn elf_fixup_relocation(&mut self, mut relocation: &mut Relocation) -> i64 {
         // Return true if we should use a section symbol to avoid preemption.
-        fn want_section_symbol(reloc: &Relocation, symbol: &Symbol) -> bool {
+        fn want_section_symbol(relocation: &Relocation, symbol: &Symbol) -> bool {
             match symbol.binding {
                 Binding::Unknown | Binding::Local => {
                     // Local symbols are never preemptible, so using the section symbol
@@ -86,7 +90,7 @@ impl Object {
                 SymbolKind::Text | SymbolKind::Data => {}
                 _ => return false,
             }
-            match reloc.kind {
+            match relocation.kind {
                 // Anything using GOT or PLT is preemptible.
                 // We also require that `Other` relocations must already be correct.
                 RelocationKind::Got
@@ -108,32 +112,29 @@ impl Object {
             true
         }
 
-        let section_symbols: Vec<_> = self.sections.iter().map(|section| section.symbol).collect();
-        for section in &mut self.sections {
-            for reloc in &mut section.relocations {
-                let symbol = &self.symbols[reloc.symbol.0];
-                if !want_section_symbol(reloc, symbol) {
-                    continue;
-                }
-                if let Some(section) = symbol.section {
-                    let section_symbol = section_symbols[section.0].unwrap();
-                    reloc.symbol = section_symbol;
-                    reloc.addend += symbol.value as i64;
-                }
+        // Use section symbols for relocations where required to avoid preemption.
+        // Otherwise, the linker will fail with:
+        //     relocation R_X86_64_PC32 against symbol `SomeSymbolName' can not be used when
+        //     making a shared object; recompile with -fPIC
+        let symbol = &self.symbols[relocation.symbol.0];
+        if want_section_symbol(relocation, symbol) {
+            if let Some(section) = symbol.section {
+                relocation.symbol = self.sections[section.0].symbol.unwrap();
+                relocation.addend += symbol.value as i64;
             }
+        }
+
+        // Determine whether the addend is stored in the relocation or the data.
+        if self.elf_has_relocation_addend() {
+            0
+        } else {
+            let constant = relocation.addend;
+            relocation.addend = 0;
+            constant
         }
     }
 
-    pub(crate) fn write_elf(&self) -> Vec<u8> {
-        // FIXME: is_rela choice needs to match the user's section data
-        let (e_machine, is_rela) = match self.architecture {
-            Architecture::Arm => (elf::EM_ARM, false),
-            Architecture::Aarch64 => (elf::EM_AARCH64, false),
-            Architecture::I386 => (elf::EM_386, false),
-            Architecture::X86_64 => (elf::EM_X86_64, true),
-            _ => unimplemented!(),
-        };
-
+    pub(crate) fn elf_write(&self) -> Vec<u8> {
         let (container, pointer_align) = match self.architecture.pointer_width().unwrap() {
             PointerWidth::U16 | PointerWidth::U32 => (goblin::container::Container::Little, 4),
             PointerWidth::U64 => (goblin::container::Container::Big, 8),
@@ -143,6 +144,7 @@ impl Object {
             Endianness::Big => goblin::container::Endian::Big,
         };
         let ctx = goblin::container::Ctx::new(container, endian);
+        let is_rela = self.elf_has_relocation_addend();
         let reloc_ctx = (is_rela, ctx);
 
         // Calculate offsets of everything, and build strtab/shstrtab.
@@ -290,6 +292,13 @@ impl Object {
         let mut buffer = Vec::with_capacity(offset);
 
         // Write file header.
+        let e_machine = match self.architecture {
+            Architecture::Arm => elf::EM_ARM,
+            Architecture::Aarch64 => elf::EM_AARCH64,
+            Architecture::I386 => elf::EM_386,
+            Architecture::X86_64 => elf::EM_X86_64,
+            _ => unimplemented!(),
+        };
         let mut header = elf::Header {
             e_ident: [0; 16],
             // TODO: other formats
