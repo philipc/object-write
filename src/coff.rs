@@ -106,11 +106,11 @@ impl Object {
             data: vec![0; 8],
             relocations: vec![Relocation {
                 offset: 0,
-                symbol: symbol_id,
-                kind: RelocationKind::Absolute,
-                subkind: RelocationSubkind::Default,
                 // TODO: pointer size
                 size: 64,
+                kind: RelocationKind::Absolute,
+                subkind: RelocationSubkind::Default,
+                symbol: symbol_id,
                 addend: 0,
             }],
             symbol: None,
@@ -327,7 +327,6 @@ impl Object {
                 debug_assert_eq!(section_offsets[index].reloc_offset, buffer.len());
                 for reloc in &section.relocations {
                     //assert!(reloc.implicit_addend);
-                    // TODO: other machines
                     let typ = match self.architecture {
                         Architecture::I386 => match (reloc.kind, reloc.size, reloc.addend) {
                             (RelocationKind::Absolute, 16, 0) => coff::IMAGE_REL_I386_DIR16,

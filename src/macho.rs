@@ -186,7 +186,6 @@ impl Object {
             },
             cputype,
             cpusubtype,
-            // TODO: other formats
             filetype: mach::MH_OBJECT,
             ncmds,
             sizeofcmds: sizeofcmds as u32,

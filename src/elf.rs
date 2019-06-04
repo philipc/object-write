@@ -301,21 +301,15 @@ impl Object {
         };
         let mut header = elf::Header {
             e_ident: [0; 16],
-            // TODO: other formats
             e_type: elf::ET_REL,
             e_machine,
-            // FIXME: validate input
             e_version: elf::EV_CURRENT.into(),
             e_entry: self.entry,
-            // TODO: other formats
             e_phoff: 0,
             e_shoff: e_shoff as u64,
-            // FIXME: validate input
             e_flags: 0,
             e_ehsize: e_ehsize as u16,
-            // TODO: other formats
             e_phentsize: 0,
-            // TODO: other formats
             e_phnum: 0,
             e_shentsize: e_shentsize as u16,
             e_shnum: if e_shnum >= elf::SHN_LORESERVE as usize {
@@ -340,16 +334,10 @@ impl Object {
         } else {
             elf::ELFDATA2MSB
         };
-        // FIXME: validate input
         header.e_ident[elf::EI_VERSION] = elf::EV_CURRENT;
-        // FIXME: validate input
         header.e_ident[elf::EI_OSABI] = elf::ELFOSABI_NONE;
-        // FIXME: validate input
         header.e_ident[elf::EI_ABIVERSION] = 0;
         buffer.iowrite_with(header, ctx).unwrap();
-
-        // TODO: group sections into segments
-        // TODO: write program headers
 
         // Write section data.
         for (index, section) in self.sections.iter().enumerate() {
@@ -692,7 +680,6 @@ impl Object {
                 elf::SectionHeader {
                     sh_name: shstrtab_str_offset,
                     sh_type: elf::SHT_STRTAB,
-                    // FIXME
                     sh_flags: 0,
                     sh_addr: 0,
                     sh_offset: shstrtab_offset as u64,

@@ -18,46 +18,16 @@ mod util;
 
 #[derive(Debug)]
 pub struct Object {
-    pub format: BinaryFormat,
-    //encoding: Encoding,
-    // e_ident
-    // EI_MAG*: constant
-    // EI_CLASS
-    // EI_DATA
-    // EI_VERSION: constant
-    // EI_OSABI
-    // EI_ABIVERSION
-    // TODO: e_type
-    //type_: u16,
-    // e_machine
-    pub architecture: Architecture,
-    // e_version: constant
-    // e_entry
+    format: BinaryFormat,
+    architecture: Architecture,
     pub entry: u64,
-    // e_flags
-    //flags: u32,
-    // e_ehsize: constant
-    // e_phentsize: constant
-    // e_phnum: calculated
-    //segments: Vec<Segment>,
-    // e_shentsize: constant
-    // e_shnum
     pub sections: Vec<Section>,
+    standard_sections: HashMap<StandardSection, SectionId>,
     // FIXME
     //pub section_symbols: Vec<SymbolId>,
-    // e_shstrndx: calculated (or maybe preserve?)
-
-    // derived:
-    // SHT_SYMTAB
     pub symbols: Vec<Symbol>,
-    // TODO: more special segments/sections
-    // TODO: PT_DYNAMIC
-    // TODO: PT_INTERP
-    // TODO: PT_NOTE
-    // TODO: .note.GNU-stack
-    pub standard_sections: HashMap<StandardSection, SectionId>,
-    pub stub_symbols: HashMap<SymbolId, SymbolId>,
-    pub subsection_via_symbols: bool,
+    stub_symbols: HashMap<SymbolId, SymbolId>,
+    subsection_via_symbols: bool,
 }
 
 impl Object {
@@ -67,11 +37,21 @@ impl Object {
             architecture,
             entry: 0,
             sections: Vec::new(),
-            symbols: Vec::new(),
             standard_sections: HashMap::new(),
+            symbols: Vec::new(),
             stub_symbols: HashMap::new(),
             subsection_via_symbols: false,
         }
+    }
+
+    #[inline]
+    pub fn format(&self) -> BinaryFormat {
+        self.format
+    }
+
+    #[inline]
+    pub fn architecture(&self) -> Architecture {
+        self.architecture
     }
 
     pub fn segment_name(&self, segment: StandardSegment) -> &'static [u8] {
@@ -240,30 +220,6 @@ impl Object {
     }
 }
 
-/*
-// Probably not needed
-#[derive(Debug)]
-pub struct SegmentId(usize);
-
-#[derive(Debug)]
-pub struct Segment {
-    // p_type
-    // TODO: only PT_LOAD, rest handled elsewhere?
-    // type_: u32,
-    // p_offset: calculated
-    // p_vaddr
-    address: u64
-    // p_paddr: not needed?
-    // p_filesz: calculated
-    // p_memsz: calculated
-    // TODO: p_flags: R/W/X
-    // p_align
-
-    // Mach-O
-    name: Vec<u8>,
-}
-*/
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StandardSegment {
     Text,
@@ -295,31 +251,17 @@ pub struct SectionId(pub usize);
 
 #[derive(Debug)]
 pub struct Section {
-    // Mach-O
-    pub segment: Vec<u8>,
-    // sh_name
-    pub name: Vec<u8>,
-    // sh_type: constant
-    // sh_flags
-    // TODO: probably need extra format-specific flags
-    pub kind: SectionKind,
-    // sh_addr
+    segment: Vec<u8>,
+    name: Vec<u8>,
+    kind: SectionKind,
     // TODO: don't use this for object files?
-    pub address: u64,
-    // sh_offset: calculated
-    // sh_size
-    pub size: u64,
-    // sh_addralign
-    pub align: u64,
-    // sh_entsize: constant
-
-    // derived:
-    // TODO: Cow
-    pub data: Vec<u8>,
-    // SHT_RELA, SHT_REL
-    pub relocations: Vec<Relocation>,
+    address: u64,
+    size: u64,
+    align: u64,
+    data: Vec<u8>,
+    relocations: Vec<Relocation>,
     // For convenience, not emitted.
-    pub symbol: Option<SymbolId>,
+    symbol: Option<SymbolId>,
 }
 
 impl Section {
@@ -349,35 +291,21 @@ pub struct SymbolId(pub usize);
 
 #[derive(Debug)]
 pub struct Symbol {
-    // st_name
     pub name: Vec<u8>,
-    // st_value
     pub value: u64,
-    // st_size
     pub size: u64,
-    // st_info/ST_TYPE: notype/object/func/section/file/common/tls
     pub kind: SymbolKind,
-    // st_info/ST_BIND: local/global/weak
     pub binding: Binding,
-    // st_other/ST_VISIBILITY: default/internal/hidden/protected
     pub visibility: Visibility,
-    // TODO: translation/linkage/global
-    // pub scope: Scope,
-    // st_shndx
     pub section: Option<SectionId>,
 }
 
 #[derive(Debug)]
 pub struct Relocation {
-    // r_offset
     pub offset: u64,
-    // r_info/R_SYM
-    pub symbol: SymbolId,
-    // r_info/R_TYPE
+    pub size: u8,
     pub kind: RelocationKind,
     pub subkind: RelocationSubkind,
-    // r_info/R_TYPE
-    pub size: u8,
-    // r_addend
+    pub symbol: SymbolId,
     pub addend: i64,
 }

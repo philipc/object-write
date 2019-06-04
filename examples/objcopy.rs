@@ -100,10 +100,10 @@ fn main() {
             };
             let out_relocation = write::Relocation {
                 offset,
-                symbol,
+                size: in_relocation.size(),
                 kind: in_relocation.kind(),
                 subkind: in_relocation.subkind(),
-                size: in_relocation.size(),
+                symbol,
                 addend: in_relocation.addend(),
             };
             out_object.sections[out_section.0]
