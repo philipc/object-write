@@ -254,8 +254,6 @@ pub struct Section {
     segment: Vec<u8>,
     name: Vec<u8>,
     kind: SectionKind,
-    // TODO: don't use this for object files?
-    address: u64,
     size: u64,
     align: u64,
     data: Vec<u8>,
@@ -276,7 +274,6 @@ impl Section {
             segment,
             name,
             kind,
-            address: 0,
             size: data.len() as u64,
             align,
             data,

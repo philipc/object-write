@@ -116,7 +116,6 @@ impl Object {
             } else {
                 section_offsets[index].offset = offset;
             }
-            // FIXME: this ignores section.address
             address = align_u64(address, section.align);
             section_offsets[index].address = address;
             address += section.size;

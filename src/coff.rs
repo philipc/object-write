@@ -99,7 +99,6 @@ impl Object {
             name,
             segment: Vec::new(),
             kind: SectionKind::ReadOnlyData,
-            address: 0,
             // TODO: pointer size
             size: 8,
             align: 8,
@@ -291,7 +290,7 @@ impl Object {
                 } else {
                     0
                 },
-                virtual_address: section.address as u32,
+                virtual_address: 0,
                 size_of_raw_data: section.data.len() as u32,
                 pointer_to_raw_data: if section.data.is_empty() {
                     0

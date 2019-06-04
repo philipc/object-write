@@ -582,7 +582,7 @@ impl Object {
                         sh_name: section_offsets[index].str_offset,
                         sh_type,
                         sh_flags: sh_flags.into(),
-                        sh_addr: section.address,
+                        sh_addr: 0,
                         sh_offset: section_offsets[index].offset as u64,
                         sh_size: section.size,
                         sh_link: 0,
