@@ -46,22 +46,16 @@ fn main() {
         if in_section.kind() == SectionKind::Metadata {
             continue;
         }
-        let data = in_section.uncompressed_data();
-        let mut size = in_section.size();
-        if size < data.len() as u64 {
-            size = data.len() as u64;
+        let mut out_section = write::Section::new(
+            in_section.segment_name().unwrap_or("").as_bytes().to_vec(),
+            in_section.name().unwrap_or("").as_bytes().to_vec(),
+            in_section.kind(),
+        );
+        if out_section.is_bss() {
+            out_section.append_bss(in_section.size(), in_section.align());
+        } else {
+            out_section.set_data(in_section.uncompressed_data().into(), in_section.align());
         }
-        let out_section = write::Section {
-            name: in_section.name().unwrap_or("").as_bytes().to_vec(),
-            segment: in_section.segment_name().unwrap_or("").as_bytes().to_vec(),
-            kind: in_section.kind(),
-            address: in_section.address(),
-            size: size,
-            align: in_section.align(),
-            data: data.into(),
-            relocations: Vec::new(),
-            symbol: None,
-        };
         let section_id = out_object.add_section(out_section);
         out_sections.insert(in_section.index(), section_id);
     }
@@ -90,7 +84,7 @@ fn main() {
         if in_section.kind() == SectionKind::Metadata {
             continue;
         }
-        let out_section = out_sections.get(&in_section.index()).unwrap();
+        let out_section = *out_sections.get(&in_section.index()).unwrap();
         for (offset, in_relocation) in in_section.relocations() {
             let symbol = match in_relocation.target() {
                 RelocationTarget::Symbol(symbol) => *out_symbols.get(&symbol).unwrap(),
@@ -106,9 +100,7 @@ fn main() {
                 symbol,
                 addend: in_relocation.addend(),
             };
-            out_object.sections[out_section.0]
-                .relocations
-                .push(out_relocation);
+            out_object.add_relocation(out_section, out_relocation);
         }
     }
 

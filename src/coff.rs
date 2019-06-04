@@ -95,33 +95,25 @@ impl Object {
 
         let mut name = b".rdata$.refptr.".to_vec();
         name.extend(&self.symbols[symbol_id.0].name);
-        let section_id = self.add_section(Section {
-            name,
-            segment: Vec::new(),
-            kind: SectionKind::ReadOnlyData,
-            // TODO: pointer size
-            size: 8,
-            align: 8,
-            data: vec![0; 8],
-            relocations: vec![Relocation {
-                offset: 0,
-                // TODO: pointer size
-                size: 64,
-                kind: RelocationKind::Absolute,
-                subkind: RelocationSubkind::Default,
-                symbol: symbol_id,
-                addend: 0,
-            }],
-            symbol: None,
-        });
+        let mut section = Section::new(Vec::new(), name, SectionKind::ReadOnlyData);
+        let stub_size = self.architecture.pointer_width().unwrap().bytes();
+        section.set_data(vec![0; stub_size as usize], stub_size as u64);
+        section.relocations = vec![Relocation {
+            offset: 0,
+            size: stub_size * 8,
+            kind: RelocationKind::Absolute,
+            subkind: RelocationSubkind::Default,
+            symbol: symbol_id,
+            addend: 0,
+        }];
+        let section_id = self.add_section(section);
 
         let mut name = b".refptr.".to_vec();
         name.extend(&self.symbols[symbol_id.0].name);
         let stub_id = self.add_symbol(Symbol {
             name,
             value: 0,
-            // TODO: pointer size
-            size: 8,
+            size: stub_size as u64,
             kind: SymbolKind::Data,
             binding: Binding::Local,
             visibility: Visibility::Default,

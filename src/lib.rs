@@ -68,8 +68,7 @@ impl Object {
             .cloned()
             .unwrap_or_else(|| {
                 let (segment, name, kind) = self.section_info(section);
-                let new_section =
-                    Section::new(segment.to_vec(), name.to_vec(), kind, Vec::new(), 1);
+                let new_section = Section::new(segment.to_vec(), name.to_vec(), kind);
                 let section_id = self.add_section(new_section);
                 self.standard_sections.insert(section, section_id);
                 section_id
@@ -126,20 +125,12 @@ impl Object {
 
     /// Append data to an existing section. Returns of the section offset of the data.
     pub fn append_section_data(&mut self, section: SectionId, data: &[u8], align: u64) -> u64 {
-        debug_assert_eq!(align & (align - 1), 0);
-        let section = &mut self.sections[section.0];
-        if section.align < align {
-            section.align = align;
-        }
-        let align = align as usize;
-        let mut offset = section.data.len();
-        if offset & (align - 1) != 0 {
-            offset += align - (offset & (align - 1));
-            section.data.resize(offset, 0);
-        }
-        section.data.extend(data);
-        section.size = section.data.len() as u64;
-        offset as u64
+        self.sections[section.0].append_data(data, align)
+    }
+
+    /// Append zero-initialized data to an existing section. Returns of the section offset of the data.
+    pub fn append_section_bss(&mut self, section: SectionId, size: u64, align: u64) -> u64 {
+        self.sections[section.0].append_bss(size, align)
     }
 
     /// Add a subsection. Returns the section id and section offset of the data.
@@ -158,7 +149,8 @@ impl Object {
             (section_id, offset)
         } else {
             let (segment, name, kind) = self.subsection_info(section, name);
-            let section = Section::new(segment.to_vec(), name, kind, data.to_vec(), align);
+            let mut section = Section::new(segment.to_vec(), name, kind);
+            section.append_data(data, align);
             let section_id = self.add_section(section);
             (section_id, 0)
         }
@@ -263,23 +255,63 @@ pub struct Section {
 }
 
 impl Section {
-    pub fn new(
-        segment: Vec<u8>,
-        name: Vec<u8>,
-        kind: SectionKind,
-        data: Vec<u8>,
-        align: u64,
-    ) -> Self {
+    pub fn new(segment: Vec<u8>, name: Vec<u8>, kind: SectionKind) -> Self {
         Section {
             segment,
             name,
             kind,
-            size: data.len() as u64,
-            align,
-            data,
+            size: 0,
+            align: 1,
+            data: Vec::new(),
             relocations: Vec::new(),
             symbol: None,
         }
+    }
+
+    #[inline]
+    pub fn is_bss(&self) -> bool {
+        self.kind == SectionKind::UninitializedData || self.kind == SectionKind::UninitializedTls
+    }
+
+    pub fn set_data(&mut self, data: Vec<u8>, align: u64) {
+        debug_assert!(!self.is_bss());
+        debug_assert_eq!(align & (align - 1), 0);
+        debug_assert!(self.data.is_empty());
+        self.size = data.len() as u64;
+        self.data = data;
+        self.align = align;
+    }
+
+    pub fn append_data(&mut self, data: &[u8], align: u64) -> u64 {
+        debug_assert!(!self.is_bss());
+        debug_assert_eq!(align & (align - 1), 0);
+        if self.align < align {
+            self.align = align;
+        }
+        let align = align as usize;
+        let mut offset = self.data.len();
+        if offset & (align - 1) != 0 {
+            offset += align - (offset & (align - 1));
+            self.data.resize(offset, 0);
+        }
+        self.data.extend(data);
+        self.size = self.data.len() as u64;
+        offset as u64
+    }
+
+    pub fn append_bss(&mut self, size: u64, align: u64) -> u64 {
+        debug_assert!(self.is_bss());
+        debug_assert_eq!(align & (align - 1), 0);
+        if self.align < align {
+            self.align = align;
+        }
+        let mut offset = self.size;
+        if offset & (align - 1) != 0 {
+            offset += align - (offset & (align - 1));
+            self.size = offset;
+        }
+        self.size += size;
+        offset as u64
     }
 }
 
