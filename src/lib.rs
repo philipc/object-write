@@ -20,12 +20,9 @@ mod util;
 pub struct Object {
     format: BinaryFormat,
     architecture: Architecture,
-    pub entry: u64,
-    pub sections: Vec<Section>,
+    sections: Vec<Section>,
     standard_sections: HashMap<StandardSection, SectionId>,
-    // FIXME
-    //pub section_symbols: Vec<SymbolId>,
-    pub symbols: Vec<Symbol>,
+    symbols: Vec<Symbol>,
     stub_symbols: HashMap<SymbolId, SymbolId>,
     subsection_via_symbols: bool,
 }
@@ -35,7 +32,6 @@ impl Object {
         Object {
             format,
             architecture,
-            entry: 0,
             sections: Vec::new(),
             standard_sections: HashMap::new(),
             symbols: Vec::new(),
@@ -115,6 +111,16 @@ impl Object {
         }
     }
 
+    #[inline]
+    pub fn section(&self, section: SectionId) -> &Section {
+        &self.sections[section.0]
+    }
+
+    #[inline]
+    pub fn section_mut(&mut self, section: SectionId) -> &mut Section {
+        &mut self.sections[section.0]
+    }
+
     pub fn add_section(&mut self, section: Section) -> SectionId {
         let id = self.sections.len();
         self.sections.push(section);
@@ -154,6 +160,16 @@ impl Object {
             let section_id = self.add_section(section);
             (section_id, 0)
         }
+    }
+
+    #[inline]
+    pub fn symbol(&self, symbol: SymbolId) -> &Symbol {
+        &self.symbols[symbol.0]
+    }
+
+    #[inline]
+    pub fn symbol_mut(&mut self, symbol: SymbolId) -> &mut Symbol {
+        &mut self.symbols[symbol.0]
     }
 
     pub fn add_symbol(&mut self, symbol: Symbol) -> SymbolId {
@@ -239,7 +255,7 @@ impl StandardSection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SectionId(pub usize);
+pub struct SectionId(usize);
 
 #[derive(Debug)]
 pub struct Section {
@@ -316,7 +332,7 @@ impl Section {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SymbolId(pub usize);
+pub struct SymbolId(usize);
 
 #[derive(Debug)]
 pub struct Symbol {

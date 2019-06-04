@@ -221,7 +221,6 @@ impl Object {
             size_of_optional_header: 0,
             characteristics: 0,
         };
-        assert_eq!(self.entry, 0);
         buffer.iowrite_with(header, ctx).unwrap();
 
         // Write section headers.

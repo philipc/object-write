@@ -38,7 +38,6 @@ fn main() {
     };
 
     let mut out_object = write::Object::new(in_object.format(), in_object.architecture());
-    out_object.entry = in_object.entry();
     // FIXME: MH_SUBSECTIONS_VIA_SYMBOLS
 
     let mut out_sections = HashMap::new();

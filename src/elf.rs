@@ -304,7 +304,7 @@ impl Object {
             e_type: elf::ET_REL,
             e_machine,
             e_version: elf::EV_CURRENT.into(),
-            e_entry: self.entry,
+            e_entry: 0,
             e_phoff: 0,
             e_shoff: e_shoff as u64,
             e_flags: 0,
