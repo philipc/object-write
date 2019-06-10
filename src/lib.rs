@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 // Re-export for now, until we merge with the object crate.
-pub use object::{Binding, RelocationKind, RelocationSubkind, SectionKind, SymbolKind, Visibility};
+pub use object::{RelocationKind, RelocationSubkind, SectionKind, SymbolKind, SymbolScope};
 
 // target-lexicon types form part of the public API.
 pub use object::target_lexicon;
@@ -173,12 +173,26 @@ impl Object {
     }
 
     pub fn add_symbol(&mut self, symbol: Symbol) -> SymbolId {
+        // Defined symbols must have a scope.
+        debug_assert!(symbol.is_undefined() || symbol.scope != SymbolScope::Unknown);
         if symbol.kind == SymbolKind::Section {
             return self.add_section_symbol(symbol.section.unwrap());
         }
         let symbol_id = SymbolId(self.symbols.len());
         self.symbols.push(symbol);
         symbol_id
+    }
+
+    pub fn add_file_symbol(&mut self, name: Vec<u8>) -> SymbolId {
+        self.add_symbol(Symbol {
+            name,
+            value: 0,
+            size: 0,
+            scope: SymbolScope::Compilation,
+            weak: false,
+            kind: SymbolKind::File,
+            section: None,
+        })
     }
 
     pub fn add_section_symbol(&mut self, section: SectionId) -> SymbolId {
@@ -191,8 +205,8 @@ impl Object {
                     value: 0,
                     size: 0,
                     kind: SymbolKind::Section,
-                    binding: Binding::Local,
-                    visibility: Visibility::Default,
+                    scope: SymbolScope::Compilation,
+                    weak: false,
                     section: Some(section),
                 });
                 self.sections[section.0].symbol = Some(symbol_id);
@@ -340,9 +354,21 @@ pub struct Symbol {
     pub value: u64,
     pub size: u64,
     pub kind: SymbolKind,
-    pub binding: Binding,
-    pub visibility: Visibility,
+    pub scope: SymbolScope,
+    pub weak: bool,
     pub section: Option<SectionId>,
+}
+
+impl Symbol {
+    #[inline]
+    pub fn is_undefined(&self) -> bool {
+        self.section.is_none()
+    }
+
+    #[inline]
+    pub fn is_local(&self) -> bool {
+        self.scope == SymbolScope::Compilation
+    }
 }
 
 #[derive(Debug)]

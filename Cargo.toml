@@ -12,8 +12,6 @@ scroll = "0.9"
 [dependencies.goblin]
 path = "../goblin"
 version = "0.0.22"
-default-features = false
-features = ["endian_fd", "elf32", "elf64", "mach32", "mach64", "pe32", "pe64", "archive"]
 
 [dev-dependencies]
 memmap = "0.7"

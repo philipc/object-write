@@ -69,8 +69,8 @@ fn main() {
             value: in_symbol.address(),
             size: in_symbol.size(),
             kind: in_symbol.kind(),
-            binding: in_symbol.binding(),
-            visibility: in_symbol.visibility(),
+            scope: in_symbol.scope(),
+            weak: in_symbol.is_weak(),
             section: in_symbol
                 .section_index()
                 .map(|s| *out_sections.get(&s).unwrap()),

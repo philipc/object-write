@@ -5,14 +5,6 @@ use crate::util::*;
 use crate::*;
 
 mod elf {
-    pub const EI_VERSION: usize = 6;
-    pub const EV_CURRENT: u8 = 1;
-
-    pub const EI_OSABI: usize = 7;
-    pub const ELFOSABI_NONE: u8 = 0;
-
-    pub const EI_ABIVERSION: usize = 8;
-
     pub use goblin::elf::header::*;
     pub use goblin::elf::program_header::*;
     pub use goblin::elf::reloc::*;
@@ -71,20 +63,9 @@ impl Object {
     pub(crate) fn elf_fixup_relocation(&mut self, mut relocation: &mut Relocation) -> i64 {
         // Return true if we should use a section symbol to avoid preemption.
         fn want_section_symbol(relocation: &Relocation, symbol: &Symbol) -> bool {
-            match symbol.binding {
-                Binding::Unknown | Binding::Local => {
-                    // Local symbols are never preemptible, so using the section symbol
-                    // is not required.
-                    return false;
-                }
-                Binding::Global | Binding::Weak => {}
-            }
-            match symbol.visibility {
-                Visibility::Unknown | Visibility::Default => {}
-                Visibility::Hidden | Visibility::Protected => {
-                    // Never preemptible, so using the section symbol is not required.
-                    return false;
-                }
+            if symbol.scope != SymbolScope::Dynamic {
+                // Only dynamic symbols can be preemptible.
+                return false;
             }
             match symbol.kind {
                 SymbolKind::Text | SymbolKind::Data => {}
@@ -212,13 +193,13 @@ impl Object {
         };
         // Local symbols must come before global.
         for (index, symbol) in self.symbols.iter().enumerate() {
-            if symbol.binding == Binding::Unknown || symbol.binding == Binding::Local {
+            if symbol.is_local() {
                 calc_symbol(index, symbol, &mut symtab_count);
             }
         }
         let symtab_count_local = symtab_count;
         for (index, symbol) in self.symbols.iter().enumerate() {
-            if symbol.binding != Binding::Unknown && symbol.binding != Binding::Local {
+            if !symbol.is_local() {
                 calc_symbol(index, symbol, &mut symtab_count);
             }
         }
@@ -373,14 +354,14 @@ impl Object {
             let st_type = match symbol.kind {
                 SymbolKind::Unknown | SymbolKind::Null => elf::STT_NOTYPE,
                 SymbolKind::Text => {
-                    if symbol.section.is_none() {
+                    if symbol.is_undefined() {
                         elf::STT_NOTYPE
                     } else {
                         elf::STT_FUNC
                     }
                 }
                 SymbolKind::Data => {
-                    if symbol.section.is_none() {
+                    if symbol.is_undefined() {
                         elf::STT_NOTYPE
                     } else {
                         elf::STT_OBJECT
@@ -392,15 +373,19 @@ impl Object {
                 SymbolKind::Tls => elf::STT_TLS,
                 SymbolKind::Label => unimplemented!(),
             };
-            let st_bind = match symbol.binding {
-                Binding::Unknown | Binding::Local => elf::STB_LOCAL,
-                Binding::Global => elf::STB_GLOBAL,
-                Binding::Weak => elf::STB_WEAK,
+            let st_bind = if symbol.is_undefined() {
+                elf::STB_GLOBAL
+            } else if symbol.is_local() {
+                elf::STB_LOCAL
+            } else if symbol.weak {
+                elf::STB_WEAK
+            } else {
+                elf::STB_GLOBAL
             };
-            let st_other = match symbol.visibility {
-                Visibility::Unknown | Visibility::Default => elf::STV_DEFAULT,
-                Visibility::Hidden => elf::STV_HIDDEN,
-                Visibility::Protected => elf::STV_PROTECTED,
+            let st_other = if symbol.scope == SymbolScope::Linkage {
+                elf::STV_HIDDEN
+            } else {
+                elf::STV_DEFAULT
             };
             let st_shndx = match symbol.kind {
                 SymbolKind::File => {
@@ -439,12 +424,12 @@ impl Object {
                 .unwrap();
         };
         for (index, symbol) in self.symbols.iter().enumerate() {
-            if symbol.binding == Binding::Unknown || symbol.binding == Binding::Local {
+            if symbol.is_local() {
                 write_symbol(index, symbol);
             }
         }
         for (index, symbol) in self.symbols.iter().enumerate() {
-            if symbol.binding != Binding::Unknown && symbol.binding != Binding::Local {
+            if !symbol.is_local() {
                 write_symbol(index, symbol);
             }
         }

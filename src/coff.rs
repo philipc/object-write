@@ -115,8 +115,8 @@ impl Object {
             value: 0,
             size: stub_size as u64,
             kind: SymbolKind::Data,
-            binding: Binding::Local,
-            visibility: Visibility::Default,
+            scope: SymbolScope::Compilation,
+            weak: false,
             section: Some(section_id),
         });
         self.stub_symbols.insert(symbol_id, stub_id);
@@ -380,12 +380,13 @@ impl Object {
                 SymbolKind::Section => coff::IMAGE_SYM_CLASS_STATIC,
                 SymbolKind::Label => coff::IMAGE_SYM_CLASS_LABEL,
                 SymbolKind::Text | SymbolKind::Data => {
-                    match symbol.binding {
-                        Binding::Local => coff::IMAGE_SYM_CLASS_STATIC,
-                        Binding::Global => coff::IMAGE_SYM_CLASS_EXTERNAL,
+                    match symbol.scope {
+                        _ if symbol.is_undefined() => coff::IMAGE_SYM_CLASS_EXTERNAL,
                         // TODO: does this need aux symbol records too?
-                        Binding::Weak => coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL,
-                        Binding::Unknown => unimplemented!(),
+                        _ if symbol.weak => coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL,
+                        SymbolScope::Unknown => unimplemented!(),
+                        SymbolScope::Compilation => coff::IMAGE_SYM_CLASS_STATIC,
+                        SymbolScope::Linkage | SymbolScope::Dynamic => coff::IMAGE_SYM_CLASS_EXTERNAL,
                     }
                 }
                 _ => unimplemented!("{:?}", symbol),

@@ -296,26 +296,27 @@ impl Object {
             }
             // TODO: N_STAB
             // TODO: N_ABS
-            let mut n_type = if symbol.section.is_some() {
-                mach::N_SECT
-            } else {
+            let mut n_type = if symbol.is_undefined() {
                 mach::N_UNDF
+            } else {
+                mach::N_SECT
             };
-            match symbol.binding {
-                Binding::Unknown | Binding::Local => {}
-                Binding::Global | Binding::Weak => n_type |= mach::N_EXT,
-            }
-            match symbol.visibility {
-                Visibility::Unknown | Visibility::Default | Visibility::Protected => {}
-                Visibility::Hidden => n_type |= mach::N_PEXT,
+            match symbol.scope {
+                SymbolScope::Unknown | SymbolScope::Compilation => {}
+                SymbolScope::Linkage => {
+                    n_type |= mach::N_EXT | mach::N_PEXT;
+                }
+                SymbolScope::Dynamic => {
+                    n_type |= mach::N_EXT;
+                }
             }
 
             let mut n_desc = 0;
-            if symbol.binding == Binding::Weak {
-                if symbol.section.is_some() {
-                    n_desc |= mach::N_WEAK_DEF;
-                } else {
+            if symbol.weak {
+                if symbol.is_undefined() {
                     n_desc |= mach::N_WEAK_REF;
+                } else {
+                    n_desc |= mach::N_WEAK_DEF;
                 }
             }
 
