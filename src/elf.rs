@@ -464,18 +464,18 @@ impl Object {
                             (RelocationKind::Other(x), _) => x,
                             _ => unimplemented!("{:?}", reloc),
                         },
-                        Architecture::X86_64 => match (reloc.kind, reloc.subkind, reloc.size) {
-                            (RelocationKind::Absolute, RelocationSubkind::Default, 64) => {
+                        Architecture::X86_64 => match (reloc.kind, reloc.encoding, reloc.size) {
+                            (RelocationKind::Absolute, RelocationEncoding::Generic, 64) => {
                                 elf::R_X86_64_64
                             }
                             (RelocationKind::Relative, _, 32) => elf::R_X86_64_PC32,
                             (RelocationKind::Got, _, 32) => elf::R_X86_64_GOT32,
                             (RelocationKind::PltRelative, _, 32) => elf::R_X86_64_PLT32,
                             (RelocationKind::GotRelative, _, 32) => elf::R_X86_64_GOTPCREL,
-                            (RelocationKind::Absolute, RelocationSubkind::Default, 32) => {
+                            (RelocationKind::Absolute, RelocationEncoding::Generic, 32) => {
                                 elf::R_X86_64_32
                             }
-                            (RelocationKind::Absolute, RelocationSubkind::X86Signed, 32) => {
+                            (RelocationKind::Absolute, RelocationEncoding::X86Signed, 32) => {
                                 elf::R_X86_64_32S
                             }
                             (RelocationKind::Absolute, _, 16) => elf::R_X86_64_16,
@@ -555,6 +555,7 @@ impl Object {
                 | SectionKind::Unknown
                 | SectionKind::Metadata
                 | SectionKind::Linker => 0,
+                SectionKind::TlsVariables => unimplemented!(),
             };
             // TODO: not sure if this is correct, maybe user should determine this
             let sh_entsize = match section.kind {

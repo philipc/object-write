@@ -95,7 +95,7 @@ fn main() {
                 offset,
                 size: in_relocation.size(),
                 kind: in_relocation.kind(),
-                subkind: in_relocation.subkind(),
+                encoding: in_relocation.encoding(),
                 symbol,
                 addend: in_relocation.addend(),
             };

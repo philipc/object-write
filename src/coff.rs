@@ -102,7 +102,7 @@ impl Object {
             offset: 0,
             size: stub_size * 8,
             kind: RelocationKind::Absolute,
-            subkind: RelocationSubkind::Default,
+            encoding: RelocationEncoding::Generic,
             symbol: symbol_id,
             addend: 0,
         }];
@@ -253,6 +253,7 @@ impl Object {
                 SectionKind::Linker => coff::IMAGE_SCN_LNK_INFO | coff::IMAGE_SCN_LNK_REMOVE,
                 SectionKind::Tls
                 | SectionKind::UninitializedTls
+                | SectionKind::TlsVariables
                 | SectionKind::Unknown
                 | SectionKind::Metadata => unimplemented!("{:?}", section),
             };
@@ -386,7 +387,9 @@ impl Object {
                         _ if symbol.weak => coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL,
                         SymbolScope::Unknown => unimplemented!(),
                         SymbolScope::Compilation => coff::IMAGE_SYM_CLASS_STATIC,
-                        SymbolScope::Linkage | SymbolScope::Dynamic => coff::IMAGE_SYM_CLASS_EXTERNAL,
+                        SymbolScope::Linkage | SymbolScope::Dynamic => {
+                            coff::IMAGE_SYM_CLASS_EXTERNAL
+                        }
                     }
                 }
                 _ => unimplemented!("{:?}", symbol),
